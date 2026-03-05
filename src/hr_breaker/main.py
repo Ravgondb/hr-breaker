@@ -35,6 +35,7 @@ st.markdown("""
 header[data-testid="stHeader"] { display: none; }
 #MainMenu { display: none; }
 footer { display: none; }
+h3 a { display: none; }
 </style>
 """, unsafe_allow_html=True)
 
