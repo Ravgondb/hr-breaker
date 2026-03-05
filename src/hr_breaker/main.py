@@ -171,6 +171,21 @@ max_iterations = 2
 st.markdown("### 🎯 К Собесу")
 st.markdown("<p style='margin-bottom: 8px; color: #555;'>Адаптируем твоё резюме под конкретную вакансию. Поможем обойти все ИИ HR-фильтры.</p>", unsafe_allow_html=True)
 
+# Настройки сразу под лозунгом
+with st.expander("⚙️ Дополнительные настройки"):
+    set_col1, set_col2 = st.columns([1, 1])
+    with set_col1:
+        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False)
+        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь PDF перед отправкой.")
+    with set_col2:
+        selected_lang_code = st.selectbox(
+            "Язык резюме",
+            options=_lang_options,
+            index=_default_lang_idx,
+            format_func=lambda code: _lang_labels[code],
+        )
+    selected_language = get_language(selected_lang_code)
+
 # Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
 
@@ -338,22 +353,7 @@ clicked = st.button(
     "🚀 Оптимизировать резюме", disabled=not can_optimize, use_container_width=True, help=btn_help
 )
 
-# Настройки под кнопкой
-with st.container():
-    set_col1, set_col2 = st.columns([1, 1])
-    with set_col1:
-        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False)
-        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь PDF перед отправкой.")
-    with set_col2:
-        selected_lang_code = st.selectbox(
-            "Язык резюме",
-            options=_lang_options,
-            index=_default_lang_idx,
-            format_func=lambda code: _lang_labels[code],
-            label_visibility="visible",
-        )
-    selected_language = get_language(selected_lang_code)
-
+# Настройки в раскрывающемся блоке над кнопкой
 if clicked:
     source = st.session_state["source_resume"]
     instructions_value = user_instructions.strip() if user_instructions else None
