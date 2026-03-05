@@ -35,6 +35,7 @@ st.markdown("""
 header[data-testid="stHeader"] { display: none; }
 #MainMenu { display: none; }
 footer { display: none; }
+.block-container { padding-top: 1rem !important; }
 a[href^="#"] { display: none !important; }
 h1 a, h2 a, h3 a { display: none !important; }
 .stMarkdown a[data-testid="stMarkdownAnchorLink"] { display: none !important; }
@@ -169,7 +170,7 @@ with st.sidebar:
     selected_language = get_language(selected_lang_code)
 
     max_iterations = st.number_input(
-        "Максимум итераций", min_value=1, max_value=10, value=settings.max_iterations
+        "Максимум итераций", min_value=1, max_value=10, value=2
     )
 
 # Main content
@@ -377,8 +378,7 @@ if clicked:
                         (debug_dir / f"iteration_{i + 1}.pdf").write_bytes(opt.pdf_bytes)
 
             def on_translation_status(msg):
-                status_container.update(label=msg)
-                status_container.write(msg)
+                status_container.update(label="Финальная обработка...")
 
             target_lang = selected_language if selected_language.code != "en" else None
 
@@ -530,15 +530,17 @@ if "last_result" in st.session_state:
                 except Exception as e:
                     st.error(f"Ошибка перевода: {e}")
 
-    # Iteration details
-    for i, opt, val in iterations:
-        with st.expander(f"Итерация {i + 1}", expanded=False):
-            if opt.changes:
-                st.write("**Изменения:**")
-                for change in opt.changes:
-                    st.write(f"- {change}")
-            display_filter_results(val)
+    # Iteration details — скрыты от пользователя
+    # (технические детали не показываем)
 
     if st.button("Очистить результат", use_container_width=True):
         st.session_state.pop("last_result", None)
         st.rerun()
+
+    # Советы по улучшению — вынесены вниз
+    failed_results = [r for r in validation.results if not r.passed]
+    if failed_results:
+        st.markdown("---")
+        st.markdown("#### 💡 Как улучшить результат")
+        for i, opt, val in iterations:
+            display_filter_results(val)
