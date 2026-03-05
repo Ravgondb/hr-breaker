@@ -151,16 +151,7 @@ with st.sidebar:
 st.markdown("### HR-Breaker")
 
 # Use cached resume if available (but not if user explicitly cleared it)
-if (
-    "source_resume" not in st.session_state
-    and not st.session_state.get("resume_cleared")
-    and cache.list_all()
-):
-    cached_resumes = cache.list_all()
-    if cached_resumes:
-        st.session_state["source_resume"] = cached_resumes[-1]
-        if cached_resumes[-1].instructions:
-            st.session_state["user_instructions"] = cached_resumes[-1].instructions
+
 
 # Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
