@@ -237,7 +237,7 @@ with col_resume:
                 resume_content = pasted_resume
 
         if resume_content:
-            with st.spinner("Извлекаем имя..."):
+            with st.spinner("Загрузка..."):
                 first_name, last_name = cached_extract_name(resume_content)
             source = ResumeSource(
                 content=resume_content, first_name=first_name, last_name=last_name
