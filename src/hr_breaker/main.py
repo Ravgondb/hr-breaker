@@ -35,7 +35,9 @@ st.markdown("""
 header[data-testid="stHeader"] { display: none; }
 #MainMenu { display: none; }
 footer { display: none; }
-h3 a { display: none; }
+a[href^="#"] { display: none !important; }
+h1 a, h2 a, h3 a { display: none !important; }
+.stMarkdown a[data-testid="stMarkdownAnchorLink"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
