@@ -171,7 +171,7 @@ max_iterations = 2
 st.markdown("### 🎯 К Собесу")
 st.markdown("<p style='margin-bottom: 8px; color: #555;'>Адаптируем твоё резюме под конкретную вакансию. Поможем обойти все ИИ HR-фильтры.</p>", unsafe_allow_html=True)
 
-# Настройки сразу под лозунгом
+# Настройки сразу під лозунгом
 with st.expander("⚙️ Дополнительные настройки"):
     set_col1, set_col2 = st.columns([1, 1])
     with set_col1:
@@ -183,8 +183,13 @@ with st.expander("⚙️ Дополнительные настройки"):
             options=_lang_options,
             index=_default_lang_idx,
             format_func=lambda code: _lang_labels[code],
+            key="selected_lang_code",
         )
-    selected_language = get_language(selected_lang_code)
+
+selected_lang_code = st.session_state.get("selected_lang_code", "ru")
+if selected_lang_code not in _lang_options:
+    selected_lang_code = "ru" if "ru" in _lang_options else _lang_options[0]
+selected_language = get_language(selected_lang_code)
 
 # Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
@@ -354,6 +359,9 @@ clicked = st.button(
 # Показываем баннер пока идёт оптимизация
 if is_running:
     st.markdown("""
+    <style>
+    button[kind="secondary"], button[kind="primary"] { pointer-events: none !important; opacity: 0.4 !important; }
+    </style>
     <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; text-align: center; margin-top: 8px;">
         <div style="font-size: 22px; margin-bottom: 6px;">⏳</div>
         <div style="font-weight: 600; font-size: 15px; color: #856404;">Оптимизируем резюме...</div>
