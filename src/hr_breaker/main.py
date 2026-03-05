@@ -172,7 +172,7 @@ with st.sidebar:
 
 # Main content
 st.markdown("### 🎯 К Собесу")
-st.markdown("Загрузи резюме и вакансию — ИИ адаптирует твоё резюме чтобы пройти автоматический отбор")
+st.markdown("<p style='margin-bottom: 8px; color: #555;'>Адаптируем твоё резюме под конкретную вакансию. Поможем обойти все ИИ HR-фильтры.</p>", unsafe_allow_html=True)
 
 # Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
