@@ -43,6 +43,14 @@ h1 a, h2 a, h3 a { display: none !important; }
 [data-testid="stDecoration"] { display: none !important; }
 [data-testid="stStatusWidget"] { display: none !important; }
 .__web-inspector-hide-shortcut__ { display: none !important; }
+div[data-testid="stCheckbox"] { margin-bottom: 0 !important; }
+div[data-testid="stCaptionContainer"] { margin-top: 0 !important; margin-bottom: 0 !important; }
+div[data-testid="stSelectbox"] { margin-top: 0 !important; }
+@media (max-width: 768px) {
+    [data-testid="stSidebar"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -144,38 +152,20 @@ def display_filter_results(validation: ValidationResult):
                         st.write(f"- {issue}")
 
 
-# Sidebar
-with st.sidebar:
-    st.markdown("**Настройки**")
-    sequential_mode = False
-    debug_mode = False
-    no_shame_mode = st.checkbox(
-        "Агрессивная оптимизация",
-        value=False,
-        help="ИИ будет активнее переформулировать твоё резюме. Результат может сильно отличаться от оригинала — проверь PDF перед отправкой.",
-    )
+# Sidebar — скрыт, настройки перенесены в основной экран
+sequential_mode = False
+debug_mode = False
 
-    _lang_options = [lang.code for lang in SUPPORTED_LANGUAGES]
-    _lang_labels = {lang.code: lang.native_name for lang in SUPPORTED_LANGUAGES}
-    _default_lang_idx = (
-        _lang_options.index("ru")
-        if "ru" in _lang_options
-        else _lang_options.index(settings.default_language)
-        if settings.default_language in _lang_options
-        else 0
-    )
-    selected_lang_code = st.selectbox(
-        "Язык резюме",
-        options=_lang_options,
-        index=_default_lang_idx,
-        format_func=lambda code: _lang_labels[code],
-        help="Язык итогового резюме. Оптимизация идёт на английском, затем переводится.",
-    )
-    selected_language = get_language(selected_lang_code)
-
-    max_iterations = st.number_input(
-        "Максимум итераций", min_value=1, max_value=10, value=2
-    )
+_lang_options = [lang.code for lang in SUPPORTED_LANGUAGES]
+_lang_labels = {lang.code: lang.native_name for lang in SUPPORTED_LANGUAGES}
+_default_lang_idx = (
+    _lang_options.index("ru")
+    if "ru" in _lang_options
+    else _lang_options.index(settings.default_language)
+    if settings.default_language in _lang_options
+    else 0
+)
+max_iterations = 2
 
 # Main content
 st.markdown("### 🎯 К Собесу")
@@ -347,6 +337,22 @@ elif is_running:
 clicked = st.button(
     "🚀 Оптимизировать резюме", disabled=not can_optimize, use_container_width=True, help=btn_help
 )
+
+# Настройки под кнопкой
+with st.container():
+    set_col1, set_col2 = st.columns([1, 1])
+    with set_col1:
+        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False)
+        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь PDF перед отправкой.")
+    with set_col2:
+        selected_lang_code = st.selectbox(
+            "Язык резюме",
+            options=_lang_options,
+            index=_default_lang_idx,
+            format_func=lambda code: _lang_labels[code],
+            label_visibility="visible",
+        )
+    selected_language = get_language(selected_lang_code)
 
 if clicked:
     source = st.session_state["source_resume"]
