@@ -448,15 +448,15 @@ if "last_result" in st.session_state:
 
     # PDF actions
     if pdf_path:
-        st.success(f"PDF saved: {pdf_path}")
-        if st.button("📂 Open Output Folder", use_container_width=True):
-            folder = str(pdf_path.parent.resolve())
-            if sys.platform == "darwin":
-                subprocess.run(["open", folder])
-            elif sys.platform == "win32":
-                subprocess.run(["explorer", folder])
-            else:
-                subprocess.run(["xdg-open", folder])
+        st.success("✅ Рюземе оптимизировано!")
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="⬇️ Download PDF",
+                data=f.read(),
+                file_name=pdf_path.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
     elif optimized:
         st.error("Failed to render PDF")
 
