@@ -189,6 +189,7 @@ with st.expander("⚙️ Дополнительные настройки"):
 # Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
 
+is_running = st.session_state.get("optimization_running", False)
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
@@ -340,7 +341,6 @@ user_instructions = st.text_area(
 st.caption("💡 Необязательно, но помогает получить более точный результат")
 
 # Optimize button
-is_running = st.session_state.get("optimization_running", False)
 can_optimize = has_resume and has_job and not is_running
 btn_help = None
 if not has_resume:
