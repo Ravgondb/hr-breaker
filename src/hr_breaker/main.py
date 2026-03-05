@@ -204,7 +204,7 @@ with col_resume:
         with c1:
             st.success(f"✓ {name}")
         with c2:
-            if st.button("Изменить", key="clear_resume"):
+            if st.button("Изменить", key="clear_resume", disabled=is_running):
                 st.session_state.pop("source_resume", None)
                 st.session_state.pop("last_result", None)
                 st.session_state["resume_uploader_key"] = (
@@ -277,7 +277,7 @@ with col_job:
         with c1:
             st.success(f"✓ {preview}")
         with c2:
-            if st.button("Изменить", key="clear_job"):
+            if st.button("Изменить", key="clear_job", disabled=is_running):
                 st.session_state.pop("job_text", None)
                 st.session_state.pop("last_job_url", None)
                 st.session_state.pop("last_result", None)
@@ -347,11 +347,19 @@ if not has_resume:
     btn_help = "Загрузи резюме"
 elif not has_job:
     btn_help = "Добавь вакансию"
-elif is_running:
-    btn_help = "Оптимизация в процессе..."
 clicked = st.button(
     "🚀 Оптимизировать резюме", disabled=not can_optimize, use_container_width=True, help=btn_help
 )
+
+# Показываем баннер пока идёт оптимизация
+if is_running:
+    st.markdown("""
+    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; text-align: center; margin-top: 8px;">
+        <div style="font-size: 22px; margin-bottom: 6px;">⏳</div>
+        <div style="font-weight: 600; font-size: 15px; color: #856404;">Оптимизируем резюме...</div>
+        <div style="font-size: 13px; color: #856404; margin-top: 4px;">Это может занять несколько минут. Не закрывай браузер!</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Настройки в раскрывающемся блоке над кнопкой
 if clicked:
@@ -390,8 +398,7 @@ if clicked:
             def on_translation_status(msg):
                 status_container.update(label="Финальная обработка...")
 
-            target_lang = selected_language if selected_language.code != "en" else None
-
+            # Сначала оптимизируем на английском без перевода
             optimized, validation, job = run_async(
                 optimize_for_job(
                     source,
@@ -402,10 +409,18 @@ if clicked:
                     parallel=not sequential_mode,
                     no_shame=no_shame_mode,
                     user_instructions=instructions_value,
-                    language=target_lang,
+                    language=None,  # без перевода во время итераций
                     on_translation_status=on_translation_status,
                 )
             )
+
+            # Переводим один раз в конце
+            if selected_language.code != "en" and optimized and optimized.html:
+                status_container.update(label="Финальная обработка — переводим на русский...")
+                optimized = run_async(
+                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                )
+
             status_container.update(label="Готово!", state="complete")
 
         pdf_path = None
@@ -464,20 +479,37 @@ if "last_result" in st.session_state:
         passed = [r.filter_name for r in validation.results if r.passed]
         failed = [r.filter_name for r in validation.results if not r.passed]
         st.warning(
-            f"Достигнут лимит итераций ({len(passed)}/{len(validation.results)} проверок пройдено)."
+            f"Резюме готово! Некоторые проверки не пройдены ({len(passed)}/{len(validation.results)}) — смотри советы внизу."
         )
 
     # PDF download
     if pdf_path:
         st.success("✅ Резюме оптимизировано!")
         with open(pdf_path, "rb") as f:
-            st.download_button(
-                label="⬇️ Скачать PDF",
-                data=f.read(),
-                file_name=pdf_path.name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
+            pdf_bytes = f.read()
+
+        # Авто-скачивание через JavaScript
+        import base64
+        b64 = base64.b64encode(pdf_bytes).decode()
+        st.components.v1.html(f"""
+            <script>
+                const link = document.createElement('a');
+                link.href = 'data:application/pdf;base64,{b64}';
+                link.download = '{pdf_path.name}';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            </script>
+        """, height=0)
+
+        st.info("📥 PDF скачивается автоматически. Если скачивание не началось — нажми кнопку ниже.")
+        st.download_button(
+            label="⬇️ Скачать PDF вручную",
+            data=pdf_bytes,
+            file_name=pdf_path.name,
+            mime="application/pdf",
+            use_container_width=True,
+        )
     elif optimized:
         st.error("Не удалось создать PDF")
 
@@ -552,5 +584,7 @@ if "last_result" in st.session_state:
     if failed_results:
         st.markdown("---")
         st.markdown("#### 💡 Как улучшить результат")
-        for i, opt, val in iterations:
-            display_filter_results(val)
+        # Показываем только последнюю итерацию
+        if iterations:
+            last_i, last_opt, last_val = iterations[-1]
+            display_filter_results(last_val)
