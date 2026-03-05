@@ -39,6 +39,10 @@ footer { display: none; }
 a[href^="#"] { display: none !important; }
 h1 a, h2 a, h3 a { display: none !important; }
 .stMarkdown a[data-testid="stMarkdownAnchorLink"] { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+.__web-inspector-hide-shortcut__ { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
