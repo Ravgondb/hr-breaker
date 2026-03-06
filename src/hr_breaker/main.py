@@ -394,30 +394,42 @@ check_only = clicked_check and not clicked_optimize
 # Показываем баннер пока идёт оптимизация
 if is_running:
     import time as _time
-    # Сохраняем время старта
     if "optimization_start_time" not in st.session_state:
         st.session_state["optimization_start_time"] = _time.time()
 
     elapsed = _time.time() - st.session_state.get("optimization_start_time", _time.time())
 
-    # Таймаут 45 минут — сбрасываем автоматически
     if elapsed > 45 * 60:
         st.session_state["optimization_running"] = False
         st.session_state.pop("optimization_start_time", None)
         st.error("⚠️ Произошла ошибка — попробуй снова.")
         st.rerun()
     else:
-        st.markdown("""
-        <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; text-align: center; margin-top: 8px;">
-            <div style="font-size: 22px; margin-bottom: 6px;">⏳</div>
-            <div style="font-weight: 600; font-size: 15px; color: #856404;">Оптимизируем резюме...</div>
-            <div style="font-size: 13px; color: #856404; margin-top: 4px;">Это может занять несколько минут. Не закрывай браузер!</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("✖️ Отменить", use_container_width=False):
-            st.session_state["optimization_running"] = False
-            st.session_state.pop("optimization_start_time", None)
-            st.rerun()
+        is_check = st.session_state.get("check_only_mode", False)
+        if is_check:
+            st.markdown("""
+            <style>
+            @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+            .loader { width:28px; height:28px; border:3px solid #ffc107; border-top:3px solid transparent; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 10px; }
+            </style>
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:18px; text-align:center; margin-top:8px;">
+                <div class="loader"></div>
+                <div style="font-weight:600; font-size:15px; color:#856404;">Проверяем резюме...</div>
+                <div style="font-size:13px; color:#856404; margin-top:4px;">Анализируем соответствие вакансии · Не закрывай браузер!</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <style>
+            @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1)} }
+            .rocket { font-size:28px; animation:pulse 1.2s ease-in-out infinite; display:block; margin-bottom:8px; }
+            </style>
+            <div style="background:#e8f4fd; border:1px solid #0984e3; border-radius:10px; padding:18px; text-align:center; margin-top:8px;">
+                <span class="rocket">🚀</span>
+                <div style="font-weight:600; font-size:15px; color:#0984e3;">Оптимизируем резюме...</div>
+                <div style="font-size:13px; color:#0984e3; margin-top:4px;">Итерация 1 из """ + str(max_iterations) + """ · Это может занять несколько минут · Не закрывай браузер!</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # Настройки в раскрывающемся блоке над кнопкой
 if clicked:
@@ -445,24 +457,41 @@ if clicked:
         is_check_only = st.session_state.get("check_only_mode", False)
         run_iterations = 1 if is_check_only else max_iterations
 
+        def update_banner(title, subtitle):
+            if is_check_only:
+                progress_placeholder.markdown(f"""
+                <style>
+                @keyframes spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
+                .loader2 {{ width:24px; height:24px; border:3px solid #ffc107; border-top:3px solid transparent; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 8px; }}
+                </style>
+                <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
+                    <div class="loader2"></div>
+                    <div style="font-weight:600; font-size:14px; color:#856404;">{title}</div>
+                    <div style="font-size:12px; color:#856404; margin-top:4px;">{subtitle}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                progress_placeholder.markdown(f"""
+                <style>
+                @keyframes pulse2 {{ 0%{{transform:scale(1)}} 50%{{transform:scale(1.2)}} 100%{{transform:scale(1)}} }}
+                .rocket2 {{ font-size:24px; animation:pulse2 1.2s ease-in-out infinite; display:block; margin-bottom:6px; }}
+                </style>
+                <div style="background:#e8f4fd; border:1px solid #0984e3; border-radius:10px; padding:14px; text-align:center;">
+                    <span class="rocket2">🚀</span>
+                    <div style="font-weight:600; font-size:14px; color:#0984e3;">{title}</div>
+                    <div style="font-size:12px; color:#0984e3; margin-top:4px;">{subtitle}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
         def on_iteration(i, opt, val):
             iteration_results.append((i, opt, val))
-            progress_placeholder.markdown(f"""
-            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
-                <div style="font-size:20px; margin-bottom:4px;">⏳</div>
-                <div style="font-weight:600; font-size:14px; color:#856404;">Итерация {i + 1} из {max_iterations} завершена...</div>
-                <div style="font-size:12px; color:#856404; margin-top:4px;">Не закрывай браузер!</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if is_check_only:
+                update_banner("Проверяем резюме...", "Анализируем соответствие вакансии · Не закрывай браузер!")
+            else:
+                update_banner(f"Итерация {i + 1} из {run_iterations} завершена", f"Готовим итерацию {i + 2} из {run_iterations} · Не закрывай браузер!" if i + 1 < run_iterations else "Финальная обработка · Не закрывай браузер!")
 
         def on_translation_status(msg):
-            progress_placeholder.markdown("""
-            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
-                <div style="font-size:20px; margin-bottom:4px;">🔄</div>
-                <div style="font-weight:600; font-size:14px; color:#856404;">Финальная обработка — переводим на русский...</div>
-                <div style="font-size:12px; color:#856404; margin-top:4px;">Почти готово!</div>
-            </div>
-            """, unsafe_allow_html=True)
+            update_banner("Финальная обработка...", "Переводим на русский · Почти готово!")
 
         # Сначала оптимизируем на английском без перевода
         optimized, validation, job = run_async(
@@ -589,7 +618,7 @@ if "last_result" in st.session_state:
             mime="application/pdf",
             use_container_width=True,
         )
-    elif optimized:
+    elif optimized and not st.session_state.get("check_only_mode", False):
         st.error("Не удалось создать PDF")
 
     # Translate
@@ -691,6 +720,7 @@ if "last_result" in st.session_state:
                     source = source.model_copy(update={"instructions": combined})
                     st.session_state["source_resume"] = source
             st.session_state.pop("last_result", None)
+            st.session_state["check_only_mode"] = False
             st.session_state["optimization_running"] = True
             st.session_state["optimization_start_time"] = __import__("time").time()
             st.rerun()
