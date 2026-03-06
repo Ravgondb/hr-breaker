@@ -188,8 +188,13 @@ _default_lang_idx = (
 max_iterations = 3
 
 # Main content
-st.markdown("### 🎯 К Собесу")
-st.markdown("<p style='margin-bottom: 8px; color: #555;'>Загрузи резюме и вакансию — получи <b>бесплатную проверку</b> и резюме в деловом стиле PDF. Если найдём ошибки — программа сможет их исправить.</p>", unsafe_allow_html=True)
+st.markdown("""
+<div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+    <div style="font-size:24px; font-weight:800; color:#1a1a1a; white-space:nowrap;">🎯 К Собесу</div>
+    <div style="width:1px; height:18px; background:#ccc; flex-shrink:0;"></div>
+    <div style="font-size:12px; color:#999; line-height:1.4;">Бесплатная проверка резюме под вакансию.<br><b style="color:#555; font-weight:600;">Поможем обойти все ИИ HR-фильтры.</b></div>
+</div>
+""", unsafe_allow_html=True)
 
 # Настройки сразу під лозунгом
 with st.expander("⚙️ Дополнительные настройки"):
