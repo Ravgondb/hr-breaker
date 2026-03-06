@@ -89,43 +89,57 @@ def cached_parse_job(text: str):
 FILTER_INFO = {
     "LLMChecker": {
         "name": "ATS-проверка",
-        "fail_msg": "⚠️ Резюме не прошло автоматический отбор",
-        "explanation": "Компании используют роботов (ATS) которые автоматически отсеивают резюме до того как их увидит человек. Твоё резюме не прошло эту проверку.",
-        "advice": "Попробуй снова — каждый раз результат разный. Или добавь в инструкции: *«Пиши конкретно и по делу, без воды»*",
+        "fail_msg": "🔴 Резюме не прошло автоматический отбор",
+        "color": "#ffd6d6",
+        "border": "#ff4b4b",
+        "explanation": "ATS-роботы оценивают резюме по десяткам критериев — структура, ключевые слова, соответствие должности. Это не значит что твоё резюме плохое — просто оно пока не оптимизировано под этот формат. Так происходит с большинством резюме с первого раза.",
+        "advice": "Включи **Агрессивную оптимизацию** в настройках и запусти снова — это позволит ИИ сильнее переработать текст и лучше попасть под критерии ATS. Или добавь в инструкции: *«Переформулируй опыт используя глаголы достижений: увеличил, сократил, внедрил, запустил»*",
     },
     "AIGeneratedChecker": {
         "name": "Проверка на ИИ-текст",
-        "fail_msg": "⚠️ Текст похож на сгенерированный ИИ",
+        "fail_msg": "🟡 Текст похож на сгенерированный ИИ",
+        "color": "#fff9db",
+        "border": "#ffc107",
         "explanation": "Некоторые HR-системы и рекрутеры отклоняют резюме которые звучат как написанные роботом — слишком гладко, шаблонно, без живой речи.",
         "advice": "Добавь в инструкции: *«Пиши живым разговорным языком, избегай канцеляризмов и шаблонных фраз»*",
     },
     "HallucinationChecker": {
         "name": "Проверка на выдумки",
-        "fail_msg": "⚠️ Обнаружены факты которых не было в оригинале",
-        "explanation": "ИИ иногда добавляет информацию которой не было в твоём оригинальном резюме — выдуманные достижения, навыки или места работы. Это опасно — на собесе могут спросить.",
+        "fail_msg": "🟡 Обнаружены факты которых не было в оригинале",
+        "color": "#fff9db",
+        "border": "#ffc107",
+        "explanation": "ИИ иногда добавляет информацию которой не было в твоём оригинальном резюме — выдуманные достижения, навыки или места работы.",
         "advice": "Добавь в инструкции: *«Не добавляй ничего чего нет в оригинале, только перефразируй»*. Перед отправкой обязательно проверь PDF.",
     },
     "KeywordMatcher": {
         "name": "Ключевые слова",
-        "fail_msg": "⚠️ Мало ключевых слов из вакансии",
+        "fail_msg": "🔴 Мало ключевых слов из вакансии",
+        "color": "#ffd6d6",
+        "border": "#ff4b4b",
         "explanation": "ATS-системы ищут в резюме конкретные слова из вакансии. Если их нет — резюме отсеивается автоматически, даже если ты идеально подходишь.",
         "advice": "Добавь в инструкции: *«Обязательно используй терминологию из вакансии»*. Или вставь текст вакансии полностью — чем больше деталей, тем лучше.",
     },
     "VectorSimilarityMatcher": {
         "name": "Соответствие вакансии",
-        "fail_msg": "⚠️ Резюме слабо соответствует вакансии",
+        "fail_msg": "🔴 Резюме слабо соответствует вакансии",
+        "color": "#ffd6d6",
+        "border": "#ff4b4b",
         "explanation": "Система оценила насколько твой опыт и навыки совпадают с требованиями вакансии. Совпадение недостаточное.",
         "advice": "Проверь — правильную ли вакансию ты вставил? Если да — попробуй добавить в инструкции конкретные навыки которые у тебя есть но не отражены в резюме.",
     },
     "DataValidator": {
         "name": "Структура резюме",
-        "fail_msg": "⚠️ Ошибка структуры резюме",
+        "fail_msg": "🔴 Ошибка структуры резюме",
+        "color": "#ffd6d6",
+        "border": "#ff4b4b",
         "explanation": "Возникла техническая проблема при создании резюме — структура документа некорректна.",
         "advice": "Попробуй запустить ещё раз. Если ошибка повторяется — попробуй другой формат резюме (например .txt вместо .pdf).",
     },
     "ContentLengthChecker": {
         "name": "Длина резюме",
-        "fail_msg": "⚠️ Резюме слишком длинное",
+        "fail_msg": "🔵 Резюме слишком длинное",
+        "color": "#e8f4fd",
+        "border": "#0984e3",
         "explanation": "Резюме не помещается на одну страницу. Большинство рекрутеров и ATS-систем предпочитают резюме на 1 страницу.",
         "advice": "Добавь в инструкции: *«Сократи резюме до одной страницы, убери менее важный опыт»*",
     },
@@ -134,22 +148,28 @@ FILTER_INFO = {
 def display_filter_results(validation: ValidationResult):
     for result in validation.results:
         if result.passed:
-            continue  # Не показываем пройденные — только проблемы
+            continue
         info = FILTER_INFO.get(result.filter_name, {})
         name = info.get("name", result.filter_name)
         fail_msg = info.get("fail_msg", f"❌ {name}")
         explanation = info.get("explanation", "")
         advice = info.get("advice", "")
+        color = info.get("color", "#f8f9fa")
+        border = info.get("border", "#ccc")
 
-        with st.expander(fail_msg, expanded=True):
-            if explanation:
-                st.write(explanation)
-            if advice:
-                st.info(f"💡 **Что делать:** {advice}")
-            if result.issues:
-                with st.expander("Технические детали", expanded=False):
-                    for issue in result.issues:
-                        st.write(f"- {issue}")
+        st.markdown(f"""
+        <div style="border-left: 4px solid {border}; background: {color}; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
+            <div style="font-weight: 700; font-size: 15px; margin-bottom: 8px;">{fail_msg}</div>
+            <div style="font-size: 13px; color: #444; margin-bottom: 8px;">{explanation}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if advice:
+            st.info(f"💡 **Что можно сделать:** {advice}")
+        if result.issues:
+            with st.expander("💬 Комментарии", expanded=False):
+                for issue in result.issues:
+                    st.write(f"- {issue}")
 
 
 # Sidebar — скрыт, настройки перенесены в основной экран
@@ -165,18 +185,18 @@ _default_lang_idx = (
     if settings.default_language in _lang_options
     else 0
 )
-max_iterations = 2
+max_iterations = 3
 
 # Main content
 st.markdown("### 🎯 К Собесу")
-st.markdown("<p style='margin-bottom: 8px; color: #555;'>Адаптируем твоё резюме под конкретную вакансию. Поможем обойти все ИИ HR-фильтры.</p>", unsafe_allow_html=True)
+st.markdown("<p style='margin-bottom: 8px; color: #555;'>Загрузи резюме и вакансию — получи <b>бесплатную проверку</b> и резюме в деловом стиле PDF. Если найдём ошибки — программа сможет их исправить.</p>", unsafe_allow_html=True)
 
 # Настройки сразу під лозунгом
 with st.expander("⚙️ Дополнительные настройки"):
     set_col1, set_col2 = st.columns([1, 1])
     with set_col1:
         no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False)
-        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь PDF перед отправкой.")
+        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой.")
     with set_col2:
         selected_lang_code = st.selectbox(
             "Язык резюме",
@@ -353,7 +373,7 @@ if not has_resume:
 elif not has_job:
     btn_help = "Добавь вакансию"
 clicked = st.button(
-    "🚀 Оптимизировать резюме", disabled=not can_optimize, use_container_width=True, help=btn_help
+    "🔍 Проверить резюме — Бесплатно", disabled=not can_optimize, use_container_width=True, help=btn_help
 )
 
 # Показываем баннер пока идёт оптимизация
@@ -596,3 +616,29 @@ if "last_result" in st.session_state:
         if iterations:
             last_i, last_opt, last_val = iterations[-1]
             display_filter_results(last_val)
+
+        st.markdown("---")
+        st.markdown("""
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+            <div style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 6px;">🚀 Хотите чтобы программа помогла исправить это?</div>
+            <div style="font-size: 13px; color: #666; line-height: 1.5;">Выше вы видите советы — можете внести правки сами. Или доверьте это нам: программа учтёт все замечания и поможет создать улучшенную версию резюме.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.caption("⏱ Займёт ещё ~10 минут")
+        if st.button("🔄 Оптимизировать резюме — Бесплатно", use_container_width=True):
+            source = st.session_state["source_resume"]
+            # Собираем все комментарии из последней итерации в инструкции
+            if iterations:
+                _, _, last_val = iterations[-1]
+                extra = []
+                for r in last_val.results:
+                    if not r.passed and r.issues:
+                        extra.extend(r.issues)
+                if extra:
+                    existing = source.instructions or ""
+                    combined = (existing + "\n" if existing else "") + "Исправь следующие проблемы: " + "; ".join(extra[:5])
+                    source = source.model_copy(update={"instructions": combined})
+                    st.session_state["source_resume"] = source
+            st.session_state.pop("last_result", None)
+            st.session_state["optimization_running"] = True
+            st.rerun()
