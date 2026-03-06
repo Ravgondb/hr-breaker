@@ -192,9 +192,9 @@ st.markdown("""
 <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
     <div style="font-size:24px; font-weight:800; color:#1a1a1a; white-space:nowrap;">🎯 К Собесу</div>
     <div style="width:1px; height:18px; background:#ccc; flex-shrink:0;"></div>
-    <div style="font-size:12px; color:#999; line-height:1.4;">Бесплатная проверка резюме под вакансию.<br><b style="color:#555; font-weight:600;">Поможем обойти все ИИ HR-фильтры.</b></div>
+    <div style="font-size:12px; color:#999; line-height:1.4;">Проверка резюме под вакансию.<br><b style="color:#555; font-weight:600;">Поможем обойти все ИИ HR-фильтры.</b></div>
 </div>
-<p style="font-size:13px; color:#666; margin-bottom:16px;">Загрузи резюме и вакансию — получи <b>бесплатную проверку</b> и резюме в деловом стиле PDF. Если найдём ошибки — программа поможет их исправить.</p>
+<p style="font-size:13px; color:#666; margin-bottom:16px;">Загрузи резюме и вакансию — <b>бесплатно проверим</b> насколько оно подходит и дадим советы по улучшению. Хочешь большего — оптимизируем резюме под вакансию и отдадим готовый PDF.</p>
 """, unsafe_allow_html=True)
 
 # Настройки сразу під лозунгом
@@ -371,16 +371,25 @@ user_instructions = st.text_area(
 )
 st.caption("💡 Необязательно, но помогает получить более точный результат")
 
-# Optimize button
+# Две кнопки
 can_optimize = has_resume and has_job and not is_running
 btn_help = None
 if not has_resume:
     btn_help = "Загрузи резюме"
 elif not has_job:
     btn_help = "Добавь вакансию"
-clicked = st.button(
-    "🔍 Проверить резюме — Бесплатно", disabled=not can_optimize, use_container_width=True, help=btn_help
-)
+
+btn_col1, btn_col2 = st.columns(2)
+with btn_col1:
+    clicked_check = st.button(
+        "🔍 Проверить резюме", disabled=not can_optimize, use_container_width=True, help=btn_help
+    )
+with btn_col2:
+    clicked_optimize = st.button(
+        "🚀 Оптимизировать резюме — Бесплатно", disabled=not can_optimize, use_container_width=True, help=btn_help
+    )
+clicked = clicked_check or clicked_optimize
+check_only = clicked_check and not clicked_optimize
 
 # Показываем баннер пока идёт оптимизация
 if is_running:
@@ -420,6 +429,7 @@ if clicked:
         st.session_state["source_resume"] = source
     st.session_state["optimization_running"] = True
     st.session_state["optimization_start_time"] = __import__("time").time()
+    st.session_state["check_only_mode"] = check_only
     error_occurred = None
 
     try:
@@ -432,6 +442,8 @@ if clicked:
 
         iteration_results = []
         progress_placeholder = st.empty()
+        is_check_only = st.session_state.get("check_only_mode", False)
+        run_iterations = 1 if is_check_only else max_iterations
 
         def on_iteration(i, opt, val):
             iteration_results.append((i, opt, val))
@@ -457,7 +469,7 @@ if clicked:
             optimize_for_job(
                 source,
                 job_text,
-                max_iterations=max_iterations,
+                max_iterations=run_iterations,
                 on_iteration=on_iteration,
                 job=job,
                 parallel=not sequential_mode,
@@ -468,17 +480,18 @@ if clicked:
             )
         )
 
-        # Переводим один раз в конце
-        if selected_language.code != "en" and optimized and optimized.html:
-            on_translation_status("translating")
-            optimized = run_async(
-                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-            )
+        # Переводим и делаем PDF только если не режим проверки
+        if not is_check_only:
+            if selected_language.code != "en" and optimized and optimized.html:
+                on_translation_status("translating")
+                optimized = run_async(
+                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                )
 
         progress_placeholder.empty()
 
         pdf_path = None
-        if optimized and optimized.pdf_bytes:
+        if not is_check_only and optimized and optimized.pdf_bytes:
             pdf_path = pdf_storage.generate_path(
                 source.first_name, source.last_name, job.company, job.title,
                 lang_code=selected_lang_code,
@@ -527,6 +540,17 @@ if "last_result" in st.session_state:
 
     st.markdown("---")
     st.markdown(f"### Результат: {job.title} — {job.company}")
+
+    # Если режим проверки — показываем кнопку оптимизации сразу
+    is_check_result = st.session_state.get("check_only_mode", False)
+    if is_check_result and not is_running:
+        st.info("👆 Это результат **проверки** — советы ниже. Хотите получить оптимизированное резюме в PDF?")
+        if st.button("🚀 Оптимизировать резюме — Бесплатно", key="optimize_after_check", use_container_width=True):
+            st.session_state["check_only_mode"] = False
+            st.session_state.pop("last_result", None)
+            st.session_state["optimization_running"] = True
+            st.session_state["optimization_start_time"] = __import__("time").time()
+            st.rerun()
 
     if validation.passed:
         st.success("✅ Все проверки пройдены!")
