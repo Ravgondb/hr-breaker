@@ -384,16 +384,31 @@ clicked = st.button(
 
 # Показываем баннер пока идёт оптимизация
 if is_running:
-    st.markdown("""
-    <style>
-    button[kind="secondary"], button[kind="primary"] { pointer-events: none !important; opacity: 0.4 !important; }
-    </style>
-    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; text-align: center; margin-top: 8px;">
-        <div style="font-size: 22px; margin-bottom: 6px;">⏳</div>
-        <div style="font-weight: 600; font-size: 15px; color: #856404;">Оптимизируем резюме...</div>
-        <div style="font-size: 13px; color: #856404; margin-top: 4px;">Это может занять несколько минут. Не закрывай браузер!</div>
-    </div>
-    """, unsafe_allow_html=True)
+    import time as _time
+    # Сохраняем время старта
+    if "optimization_start_time" not in st.session_state:
+        st.session_state["optimization_start_time"] = _time.time()
+
+    elapsed = _time.time() - st.session_state.get("optimization_start_time", _time.time())
+
+    # Таймаут 45 минут — сбрасываем автоматически
+    if elapsed > 45 * 60:
+        st.session_state["optimization_running"] = False
+        st.session_state.pop("optimization_start_time", None)
+        st.error("⚠️ Произошла ошибка — попробуй снова.")
+        st.rerun()
+    else:
+        st.markdown("""
+        <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px; padding: 16px; text-align: center; margin-top: 8px;">
+            <div style="font-size: 22px; margin-bottom: 6px;">⏳</div>
+            <div style="font-weight: 600; font-size: 15px; color: #856404;">Оптимизируем резюме...</div>
+            <div style="font-size: 13px; color: #856404; margin-top: 4px;">Это может занять несколько минут. Не закрывай браузер!</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("✖️ Отменить", use_container_width=False):
+            st.session_state["optimization_running"] = False
+            st.session_state.pop("optimization_start_time", None)
+            st.rerun()
 
 # Настройки в раскрывающемся блоке над кнопкой
 if clicked:
@@ -404,6 +419,7 @@ if clicked:
         cache.put(source)
         st.session_state["source_resume"] = source
     st.session_state["optimization_running"] = True
+    st.session_state["optimization_start_time"] = __import__("time").time()
     error_occurred = None
 
     try:
@@ -415,47 +431,51 @@ if clicked:
             debug_dir = pdf_storage.generate_debug_dir(job.company, job.title)
 
         iteration_results = []
+        progress_placeholder = st.empty()
 
-        with st.status("Оптимизируем резюме...", expanded=True) as status_container:
+        def on_iteration(i, opt, val):
+            iteration_results.append((i, opt, val))
+            progress_placeholder.markdown(f"""
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
+                <div style="font-size:20px; margin-bottom:4px;">⏳</div>
+                <div style="font-weight:600; font-size:14px; color:#856404;">Итерация {i + 1} из {max_iterations} завершена...</div>
+                <div style="font-size:12px; color:#856404; margin-top:4px;">Не закрывай браузер!</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            def on_iteration(i, opt, val):
-                iteration_results.append((i, opt, val))
-                status_container.update(label=f"Итерация {i + 1}/{max_iterations}")
-                status_container.write(f"Итерация {i + 1} завершена")
+        def on_translation_status(msg):
+            progress_placeholder.markdown("""
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
+                <div style="font-size:20px; margin-bottom:4px;">🔄</div>
+                <div style="font-weight:600; font-size:14px; color:#856404;">Финальная обработка — переводим на русский...</div>
+                <div style="font-size:12px; color:#856404; margin-top:4px;">Почти готово!</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                if debug_mode and debug_dir:
-                    if opt.html:
-                        (debug_dir / f"iteration_{i + 1}.html").write_text(opt.html, encoding="utf-8")
-                    if opt.pdf_bytes:
-                        (debug_dir / f"iteration_{i + 1}.pdf").write_bytes(opt.pdf_bytes)
+        # Сначала оптимизируем на английском без перевода
+        optimized, validation, job = run_async(
+            optimize_for_job(
+                source,
+                job_text,
+                max_iterations=max_iterations,
+                on_iteration=on_iteration,
+                job=job,
+                parallel=not sequential_mode,
+                no_shame=no_shame_mode,
+                user_instructions=instructions_value,
+                language=None,
+                on_translation_status=on_translation_status,
+            )
+        )
 
-            def on_translation_status(msg):
-                status_container.update(label="Финальная обработка...")
-
-            # Сначала оптимизируем на английском без перевода
-            optimized, validation, job = run_async(
-                optimize_for_job(
-                    source,
-                    job_text,
-                    max_iterations=max_iterations,
-                    on_iteration=on_iteration,
-                    job=job,
-                    parallel=not sequential_mode,
-                    no_shame=no_shame_mode,
-                    user_instructions=instructions_value,
-                    language=None,  # без перевода во время итераций
-                    on_translation_status=on_translation_status,
-                )
+        # Переводим один раз в конце
+        if selected_language.code != "en" and optimized and optimized.html:
+            on_translation_status("translating")
+            optimized = run_async(
+                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
             )
 
-            # Переводим один раз в конце
-            if selected_language.code != "en" and optimized and optimized.html:
-                status_container.update(label="Финальная обработка — переводим на русский...")
-                optimized = run_async(
-                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-                )
-
-            status_container.update(label="Готово!", state="complete")
+        progress_placeholder.empty()
 
         pdf_path = None
         if optimized and optimized.pdf_bytes:
@@ -488,6 +508,7 @@ if clicked:
         error_occurred = e
     finally:
         st.session_state["optimization_running"] = False
+        st.session_state.pop("optimization_start_time", None)
 
     if error_occurred:
         st.error(f"Ошибка оптимизации: {error_occurred}")
@@ -647,4 +668,5 @@ if "last_result" in st.session_state:
                     st.session_state["source_resume"] = source
             st.session_state.pop("last_result", None)
             st.session_state["optimization_running"] = True
+            st.session_state["optimization_start_time"] = __import__("time").time()
             st.rerun()
