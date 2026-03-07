@@ -1,20 +1,20 @@
 import asyncio
 import base64
-import threading
+import html as _html
 import time
-import traceback
-
+import nest_asyncio
 import streamlit as st
+
+nest_asyncio.apply()
+
+# Event loop setup
+if "event_loop" not in st.session_state:
+    st.session_state.event_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(st.session_state.event_loop)
 
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
-from hr_breaker.models import (
-    GeneratedPDF,
-    ResumeSource,
-    ValidationResult,
-    SUPPORTED_LANGUAGES,
-    get_language,
-)
+from hr_breaker.models import GeneratedPDF, ResumeSource, ValidationResult, SUPPORTED_LANGUAGES, get_language
 from hr_breaker.orchestration import optimize_for_job, translate_and_rerender
 from hr_breaker.services import (
     PDFStorage,
@@ -24,43 +24,6 @@ from hr_breaker.services import (
 )
 from hr_breaker.services.pdf_parser import load_resume_content_from_upload
 
-
-# -----------------------------
-# Async helper without nest_asyncio/session loop
-# -----------------------------
-def run_async(coro, timeout_sec: int = 900):
-    wrapped = asyncio.wait_for(coro, timeout=timeout_sec)
-
-    try:
-        asyncio.get_running_loop()
-        has_running_loop = True
-    except RuntimeError:
-        has_running_loop = False
-
-    if not has_running_loop:
-        return asyncio.run(wrapped)
-
-    # Rare fallback: if loop already running in current thread
-    result_holder = {}
-    error_holder = {}
-
-    def _runner():
-        try:
-            result_holder["result"] = asyncio.run(wrapped)
-        except Exception as e:
-            error_holder["error"] = e
-
-    t = threading.Thread(target=_runner, daemon=True)
-    t.start()
-    t.join(timeout_sec + 5)
-
-    if t.is_alive():
-        raise TimeoutError(f"Async task exceeded {timeout_sec} seconds")
-    if "error" in error_holder:
-        raise error_holder["error"]
-    return result_holder.get("result")
-
-
 # Initialize services
 cache = ResumeCache()
 pdf_storage = PDFStorage()
@@ -68,8 +31,7 @@ settings = get_settings()
 
 st.set_page_config(page_title="К Собесу", page_icon="🎯", layout="wide")
 
-st.markdown(
-    """
+st.markdown("""
 <style>
 header[data-testid="stHeader"] { display: none; }
 #MainMenu { display: none; }
@@ -91,25 +53,23 @@ div[data-testid="stSelectbox"] { margin-top: 0 !important; }
     .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
 }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
+def run_async(coro):
+    loop = st.session_state.event_loop
+    return loop.run_until_complete(coro)
 
 @st.cache_data(show_spinner=False)
 def cached_scrape_job(url: str) -> str:
     return scrape_job_posting(url)
 
-
 @st.cache_data(show_spinner=False)
 def cached_extract_name(content: str) -> tuple[str | None, str | None]:
-    return run_async(extract_name(content), timeout_sec=120)
-
+    return run_async(extract_name(content))
 
 @st.cache_data(show_spinner=False)
 def cached_parse_job(text: str):
-    return run_async(parse_job_posting(text), timeout_sec=180)
-
+    return run_async(parse_job_posting(text))
 
 FILTER_INFO = {
     "LLMChecker": {
@@ -170,28 +130,24 @@ FILTER_INFO = {
     },
 }
 
-
 def display_filter_results(validation: ValidationResult):
     for result in validation.results:
         if result.passed:
             continue
         info = FILTER_INFO.get(result.filter_name, {})
-        name = info.get("name", result.filter_name)
+        name = info.get("name", _html.escape(result.filter_name))
         fail_msg = info.get("fail_msg", f"❌ {name}")
         explanation = info.get("explanation", "")
         advice = info.get("advice", "")
         color = info.get("color", "#f8f9fa")
         border = info.get("border", "#ccc")
 
-        st.markdown(
-            f"""
+        st.markdown(f"""
         <div style="border-left: 4px solid {border}; background: {color}; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
             <div style="font-weight: 700; font-size: 15px; margin-bottom: 8px;">{fail_msg}</div>
             <div style="font-size: 13px; color: #444; margin-bottom: 8px;">{explanation}</div>
         </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
 
         if advice:
             st.info(f"💡 **Что можно сделать:** {advice}")
@@ -200,9 +156,7 @@ def display_filter_results(validation: ValidationResult):
                 for issue in result.issues:
                     st.write(f"- {issue}")
 
-
-sequential_mode = False
-debug_mode = False
+sequential_mode = False  # параллельный режим включён
 
 _lang_options = [lang.code for lang in SUPPORTED_LANGUAGES]
 _lang_labels = {lang.code: lang.native_name for lang in SUPPORTED_LANGUAGES}
@@ -213,30 +167,26 @@ _default_lang_idx = (
     if settings.default_language in _lang_options
     else 0
 )
-
 max_iterations = 3
 
-st.markdown(
-    """
+# Main content
+st.markdown("""
 <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
     <div style="font-size:24px; font-weight:800; color:#1a1a1a; white-space:nowrap;">🎯 К Собесу</div>
     <div style="width:1px; height:18px; background:#ccc; flex-shrink:0;"></div>
     <div style="font-size:12px; color:#999; line-height:1.4;">Проверка резюме под вакансию.<br><b style="color:#555; font-weight:600;">Поможем обойти все ИИ HR-фильтры.</b></div>
 </div>
 <p style="font-size:13px; color:#666; margin-bottom:16px;">Загрузи резюме и вакансию — <b>бесплатно проверим</b> насколько оно подходит и дадим советы по улучшению. Хочешь большего — оптимизируем резюме под вакансию и отдадим готовый PDF.</p>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
+# Настройки сразу під лозунгом
 with st.expander("⚙️ Дополнительные настройки"):
     set_col1, set_col2 = st.columns([1, 1])
     with set_col1:
-        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False)
-        st.caption(
-            "ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой."
-        )
+        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False, key="no_shame_mode")
+        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой.")
     with set_col2:
-        selected_lang_code = st.selectbox(
+        st.selectbox(
             "Язык резюме",
             options=_lang_options,
             index=_default_lang_idx,
@@ -249,6 +199,7 @@ if selected_lang_code not in _lang_options:
     selected_lang_code = "ru" if "ru" in _lang_options else _lang_options[0]
 selected_language = get_language(selected_lang_code)
 
+# Two main columns: Resume | Job
 col_resume, col_job = st.columns(2)
 
 is_running = st.session_state.get("optimization_running", False)
@@ -270,10 +221,10 @@ with col_resume:
             if st.button("Изменить", key="clear_resume", disabled=is_running):
                 st.session_state.pop("source_resume", None)
                 st.session_state.pop("last_result", None)
+                st.session_state.pop("pasted_resume", None)
                 st.session_state["resume_uploader_key"] = (
                     st.session_state.get("resume_uploader_key", 0) + 1
                 )
-                st.session_state["resume_cleared"] = True
                 st.rerun()
         with st.expander("Предпросмотр", expanded=False):
             st.text(src.content)
@@ -288,7 +239,9 @@ with col_resume:
 
         resume_content = None
         if resume_method == "Загрузить файл":
-            uploader_key = f"resume_uploader_{st.session_state.get('resume_uploader_key', 0)}"
+            uploader_key = (
+                f"resume_uploader_{st.session_state.get('resume_uploader_key', 0)}"
+            )
             uploaded_file = st.file_uploader(
                 "Загрузить (.tex, .md, .txt, .pdf)",
                 type=["tex", "md", "txt", "pdf"],
@@ -305,6 +258,7 @@ with col_resume:
                 height=100,
                 label_visibility="collapsed",
                 placeholder="Вставьте текст резюме...",
+                key="pasted_resume",
             )
             if pasted_resume:
                 resume_content = pasted_resume
@@ -317,7 +271,6 @@ with col_resume:
             )
             cache.put(source)
             st.session_state["source_resume"] = source
-            st.session_state.pop("resume_cleared", None)
             st.rerun()
 
 with col_job:
@@ -342,6 +295,9 @@ with col_job:
                 st.session_state.pop("job_text", None)
                 st.session_state.pop("last_job_url", None)
                 st.session_state.pop("last_result", None)
+                st.session_state.pop("scrape_failed_url", None)
+                st.session_state.pop("pasted_job", None)
+                st.session_state.pop("job_url_input", None)
                 st.rerun()
         with st.expander("Предпросмотр", expanded=False):
             st.text(job_text)
@@ -356,9 +312,7 @@ with col_job:
 
         if job_input_method == "Ссылка":
             job_url = st.text_input(
-                "Ссылка на вакансию",
-                label_visibility="collapsed",
-                placeholder="https://...",
+                "Ссылка на вакансию", label_visibility="collapsed", placeholder="https://...", key="job_url_input"
             )
 
             if job_url and job_url != st.session_state.get("last_job_url"):
@@ -371,9 +325,7 @@ with col_job:
                         st.rerun()
                     except CloudflareBlockedError:
                         st.session_state["scrape_failed_url"] = job_url
-                        st.warning(
-                            "Сайт защищён от ботов. Скопируй текст вакансии вручную."
-                        )
+                        st.warning("Сайт защищён от ботов. Скопируй текст вакансии вручную.")
                     except Exception as e:
                         st.error(f"Ошибка: {e}")
 
@@ -387,15 +339,16 @@ with col_job:
                 height=100,
                 label_visibility="collapsed",
                 placeholder="Вставьте текст вакансии...",
+                key="pasted_job",
             )
             if pasted_job:
                 st.session_state["job_text"] = pasted_job
                 st.session_state.pop("scrape_failed_url", None)
                 st.rerun()
 
+# User instructions
 if "user_instructions" not in st.session_state:
     st.session_state["user_instructions"] = ""
-
 user_instructions = st.text_area(
     "Дополнительные инструкции (необязательно)",
     placeholder="Например: сделай акцент на управлении командой, я перехожу из маркетинга в продакты...",
@@ -404,6 +357,7 @@ user_instructions = st.text_area(
 )
 st.caption("💡 Необязательно, но помогает получить более точный результат")
 
+# Две кнопки
 can_optimize = has_resume and has_job and not is_running
 btn_help = None
 if not has_resume:
@@ -414,22 +368,19 @@ elif not has_job:
 btn_col1, btn_col2 = st.columns(2)
 with btn_col1:
     clicked_check = st.button(
-        "🔍 Проверить резюме",
-        disabled=not can_optimize,
-        use_container_width=True,
-        help=btn_help,
+        "🔍 Проверить резюме", key="btn_check", disabled=not can_optimize, use_container_width=True, help=btn_help
     )
 with btn_col2:
     clicked_optimize = st.button(
-        "🚀 Оптимизировать резюме — Бесплатно",
-        disabled=not can_optimize,
-        use_container_width=True,
-        help=btn_help,
+        "🚀 Оптимизировать резюме — Бесплатно", key="btn_optimize", disabled=not can_optimize, use_container_width=True, help=btn_help
     )
-
 clicked = clicked_check or clicked_optimize
 check_only = clicked_check and not clicked_optimize
 
+# Триггер запуска — либо кнопка нажата, либо после rerun от улучшалки
+should_run = clicked or st.session_state.pop("trigger_optimization", False)
+
+# Показываем баннер пока идёт оптимизация
 if is_running:
     if "optimization_start_time" not in st.session_state:
         st.session_state["optimization_start_time"] = time.time()
@@ -439,13 +390,12 @@ if is_running:
     if elapsed > 45 * 60:
         st.session_state["optimization_running"] = False
         st.session_state.pop("optimization_start_time", None)
-        st.error("⚠️ Превышено время ожидания (45 минут). Попробуй снова.")
+        st.error("⚠️ Произошла ошибка — попробуй снова.")
         st.rerun()
     else:
         is_check = st.session_state.get("check_only_mode", False)
         if is_check:
-            st.markdown(
-                """
+            st.markdown("""
             <style>
             @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
             .loader { width:28px; height:28px; border:3px solid #ffc107; border-top:3px solid transparent; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 10px; }
@@ -455,102 +405,55 @@ if is_running:
                 <div style="font-weight:600; font-size:15px; color:#856404;">Проверяем резюме...</div>
                 <div style="font-size:13px; color:#856404; margin-top:4px;">Анализируем соответствие вакансии · Не закрывай браузер!</div>
             </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            """, unsafe_allow_html=True)
         else:
-            st.markdown(
-                f"""
+            st.markdown("""
             <style>
-            @keyframes pulse {{ 0%{{transform:scale(1)}} 50%{{transform:scale(1.2)}} 100%{{transform:scale(1)}} }}
-            .rocket {{ font-size:28px; animation:pulse 1.2s ease-in-out infinite; display:block; margin-bottom:8px; }}
+            @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1)} }
+            .rocket { font-size:28px; animation:pulse 1.2s ease-in-out infinite; display:block; margin-bottom:8px; }
             </style>
             <div style="background:#e8f4fd; border:1px solid #0984e3; border-radius:10px; padding:18px; text-align:center; margin-top:8px;">
                 <span class="rocket">🚀</span>
                 <div style="font-weight:600; font-size:15px; color:#0984e3;">Оптимизируем резюме...</div>
-                <div style="font-size:13px; color:#0984e3; margin-top:4px;">Итерация 1 из {max_iterations} · Это может занять несколько минут · Не закрывай браузер!</div>
+                <div style="font-size:13px; color:#0984e3; margin-top:4px;">Итерация 1 из """ + str(max_iterations) + """ · Это может занять несколько минут · Не закрывай браузер!</div>
             </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            """, unsafe_allow_html=True)
 
-if clicked:
+# Настройки в раскрывающемся блоке над кнопкой
+if should_run:
+    if "source_resume" not in st.session_state:
+        st.session_state.pop("trigger_optimization", None)
+        st.session_state["optimization_running"] = False
+        st.rerun()
+
     source = st.session_state["source_resume"]
     instructions_value = user_instructions.strip() if user_instructions else None
-
     if instructions_value != source.instructions:
         source = source.model_copy(update={"instructions": instructions_value})
         cache.put(source)
         st.session_state["source_resume"] = source
-
     st.session_state["optimization_running"] = True
     st.session_state["optimization_start_time"] = time.time()
-    st.session_state["check_only_mode"] = check_only
+    # check_only_mode устанавливаем только при прямом нажатии кнопки
+    if clicked:
+        st.session_state["check_only_mode"] = check_only
     error_occurred = None
 
     try:
         with st.spinner("Анализируем вакансию..."):
             job = cached_parse_job(job_text)
 
-        debug_dir = None
-        if debug_mode:
-            debug_dir = pdf_storage.generate_debug_dir(job.company, job.title)
-
         iteration_results = []
-        progress_placeholder = st.empty()
         is_check_only = st.session_state.get("check_only_mode", False)
         run_iterations = 1 if is_check_only else max_iterations
 
-        def update_banner(title, subtitle):
-            if is_check_only:
-                progress_placeholder.markdown(
-                    f"""
-                <style>
-                @keyframes spin {{ 0%{{transform:rotate(0deg)}} 100%{{transform:rotate(360deg)}} }}
-                .loader2 {{ width:24px; height:24px; border:3px solid #ffc107; border-top:3px solid transparent; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 8px; }}
-                </style>
-                <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:14px; text-align:center;">
-                    <div class="loader2"></div>
-                    <div style="font-weight:600; font-size:14px; color:#856404;">{title}</div>
-                    <div style="font-size:12px; color:#856404; margin-top:4px;">{subtitle}</div>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-            else:
-                progress_placeholder.markdown(
-                    f"""
-                <style>
-                @keyframes pulse2 {{ 0%{{transform:scale(1)}} 50%{{transform:scale(1.2)}} 100%{{transform:scale(1)}} }}
-                .rocket2 {{ font-size:24px; animation:pulse2 1.2s ease-in-out infinite; display:block; margin-bottom:6px; }}
-                </style>
-                <div style="background:#e8f4fd; border:1px solid #0984e3; border-radius:10px; padding:14px; text-align:center;">
-                    <span class="rocket2">🚀</span>
-                    <div style="font-weight:600; font-size:14px; color:#0984e3;">{title}</div>
-                    <div style="font-size:12px; color:#0984e3; margin-top:4px;">{subtitle}</div>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-
         def on_iteration(i, opt, val):
             iteration_results.append((i, opt, val))
-            if is_check_only:
-                update_banner(
-                    "Проверяем резюме...",
-                    "Анализируем соответствие вакансии · Не закрывай браузер!",
-                )
-            else:
-                next_msg = (
-                    f"Готовим итерацию {i + 2} из {run_iterations} · Не закрывай браузер!"
-                    if i + 1 < run_iterations
-                    else "Финальная обработка · Не закрывай браузер!"
-                )
-                update_banner(f"Итерация {i + 1} из {run_iterations} завершена", next_msg)
 
-        def on_translation_status(_msg):
-            update_banner("Финальная обработка...", "Переводим на русский · Почти готово!")
+        def on_translation_status(msg):
+            pass
 
+        # Сначала оптимизируем на английском без перевода
         optimized, validation, job = run_async(
             optimize_for_job(
                 source,
@@ -563,28 +466,20 @@ if clicked:
                 user_instructions=instructions_value,
                 language=None,
                 on_translation_status=on_translation_status,
-            ),
-            timeout_sec=60 * 40,
+            )
         )
 
-        if not is_check_only and selected_language.code != "en" and optimized and optimized.html:
-            on_translation_status("translating")
-            optimized = run_async(
-                translate_and_rerender(
-                    optimized, selected_language, job, on_status=on_translation_status
-                ),
-                timeout_sec=60 * 20,
-            )
-
-        progress_placeholder.empty()
-
+        # Переводим и делаем PDF только если не режим проверки
+        if not is_check_only:
+            if selected_language.code != "en" and optimized and optimized.html:
+                on_translation_status("translating")
+                optimized = run_async(
+                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                )
         pdf_path = None
         if not is_check_only and optimized and optimized.pdf_bytes:
             pdf_path = pdf_storage.generate_path(
-                source.first_name,
-                source.last_name,
-                job.company,
-                job.title,
+                source.first_name, source.last_name, job.company, job.title,
                 lang_code=selected_lang_code,
             )
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -606,22 +501,19 @@ if clicked:
             "job": job,
             "iterations": iteration_results,
             "pdf_path": pdf_path,
-            "debug_dir": debug_dir,
         }
-
-    except TimeoutError as e:
+    except Exception as e:
         error_occurred = e
-    except Exception:
-        error_occurred = traceback.format_exc()
     finally:
         st.session_state["optimization_running"] = False
         st.session_state.pop("optimization_start_time", None)
 
     if error_occurred:
-        st.error(f"Ошибка оптимизации:\n{error_occurred}")
+        st.error(f"Ошибка оптимизации: {error_occurred}")
     else:
         st.rerun()
 
+# Display last result if exists
 if "last_result" in st.session_state:
     result = st.session_state["last_result"]
     optimized = result["optimized"]
@@ -633,18 +525,14 @@ if "last_result" in st.session_state:
     st.markdown("---")
     st.markdown(f"### Результат: {job.title} — {job.company}")
 
+    # Если режим проверки — показываем кнопку оптимизации сразу
     is_check_result = st.session_state.get("check_only_mode", False)
     if is_check_result and not is_running:
-        st.info(
-            "👆 Это результат **проверки** — советы ниже. Хотите получить оптимизированное резюме в PDF?"
-        )
-        if st.button(
-            "🚀 Оптимизировать резюме — Бесплатно",
-            key="optimize_after_check",
-            use_container_width=True,
-        ):
+        st.info("👆 Это результат **проверки** — советы ниже. Хотите получить оптимизированное резюме в PDF?")
+        if st.button("🚀 Оптимизировать резюме — Бесплатно", key="optimize_after_check", use_container_width=True):
             st.session_state["check_only_mode"] = False
             st.session_state.pop("last_result", None)
+            st.session_state["trigger_optimization"] = True
             st.session_state["optimization_running"] = True
             st.session_state["optimization_start_time"] = time.time()
             st.rerun()
@@ -652,19 +540,26 @@ if "last_result" in st.session_state:
     if validation.passed:
         st.success("✅ Все проверки пройдены!")
     else:
-        passed = [r.filter_name for r in validation.results if r.passed]
-        st.warning(
-            f"Резюме готово! Некоторые проверки не пройдены ({len(passed)}/{len(validation.results)}) — смотри советы внизу."
-        )
+        failed_count = sum(1 for r in validation.results if not r.passed)
+        total_count = len(validation.results)
+        if is_check_result:
+            st.warning(
+                f"Проверка завершена! Не пройдено критериев: {failed_count} из {total_count} — смотри советы внизу."
+            )
+        else:
+            st.warning(
+                f"Резюме готово! Не пройдено проверок: {failed_count} из {total_count} — смотри советы внизу."
+            )
 
-    if pdf_path:
+    # PDF download
+    if pdf_path and pdf_path.exists():
         st.success("✅ Резюме оптимизировано!")
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
 
+        # Авто-скачивание через JavaScript
         b64 = base64.b64encode(pdf_bytes).decode()
-        st.components.v1.html(
-            f"""
+        st.components.v1.html(f"""
             <script>
                 const link = document.createElement('a');
                 link.href = 'data:application/pdf;base64,{b64}';
@@ -673,66 +568,51 @@ if "last_result" in st.session_state:
                 link.click();
                 document.body.removeChild(link);
             </script>
-        """,
-            height=0,
-        )
+        """, height=0)
 
-        st.info("📥 PDF скачивается автоматически. Если не началось — нажми кнопку ниже.")
+        st.info("📥 PDF скачивается автоматически. Если скачивание не началось — нажми кнопку ниже.")
         st.download_button(
             label="⬇️ Скачать PDF вручную",
             data=pdf_bytes,
             file_name=pdf_path.name,
             mime="application/pdf",
+            key="download_pdf",
             use_container_width=True,
         )
-    elif optimized and not st.session_state.get("check_only_mode", False):
+    elif optimized and not st.session_state.get("check_only_mode", False) and (not pdf_path or not pdf_path.exists()):
         st.error("Не удалось создать PDF")
 
-    if optimized and optimized.html:
-        translate_targets = [lang for lang in SUPPORTED_LANGUAGES if lang.code != "en"]
+    # Translate — только если есть PDF (не в режиме проверки)
+    if optimized and optimized.html and not st.session_state.get("check_only_mode", False):
+        translate_targets = [lang for lang in SUPPORTED_LANGUAGES if lang.code != "en" and lang.code != selected_lang_code]
         if translate_targets:
             tr_col1, tr_col2 = st.columns([2, 1])
             with tr_col1:
                 translate_lang_code = st.selectbox(
                     "Перевести на...",
                     options=[lang.code for lang in translate_targets],
-                    format_func=lambda c: next(
-                        lg.native_name for lg in translate_targets if lg.code == c
-                    ),
+                    format_func=lambda c: next(lg.native_name for lg in translate_targets if lg.code == c),
                     key="translate_target_lang",
                     help="Перевести результат без повторной оптимизации",
                 )
             with tr_col2:
-                translate_clicked = st.button(
-                    "🌐 Перевести", use_container_width=True, key="translate_btn"
-                )
-
+                translate_clicked = st.button("🌐 Перевести", use_container_width=True, key="translate_btn")
             if translate_clicked and translate_lang_code:
                 translate_language = get_language(translate_lang_code)
                 try:
-                    with st.status(
-                        f"Переводим на {translate_language.native_name}...", expanded=True
-                    ) as tr_status:
-
+                    with st.status(f"Переводим на {translate_language.native_name}...", expanded=True) as tr_status:
                         def on_tr_status(msg):
-                            tr_status.update(label=msg)
-                            tr_status.write(msg)
+                            pass  # не вызываем Streamlit из async-колбэка
 
                         translated = run_async(
-                            translate_and_rerender(
-                                optimized, translate_language, job, on_status=on_tr_status
-                            ),
-                            timeout_sec=60 * 20,
+                            translate_and_rerender(optimized, translate_language, job, on_status=on_tr_status)
                         )
                         tr_status.update(label="Перевод завершён", state="complete")
 
-                    if translated.pdf_bytes:
+                    if translated and translated.pdf_bytes:
                         source = st.session_state["source_resume"]
                         tr_pdf_path = pdf_storage.generate_path(
-                            source.first_name,
-                            source.last_name,
-                            job.company,
-                            job.title,
+                            source.first_name, source.last_name, job.company, job.title,
                             lang_code=translate_language.code,
                         )
                         tr_pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -748,45 +628,44 @@ if "last_result" in st.session_state:
                         )
                         pdf_storage.save_record(pdf_record)
 
-                        if "english_html" not in st.session_state["last_result"]:
-                            st.session_state["last_result"]["english_html"] = optimized.html
-
                         st.session_state["last_result"] = {
                             **st.session_state["last_result"],
                             "optimized": translated,
                             "pdf_path": tr_pdf_path,
                         }
                         st.rerun()
-                except Exception:
-                    st.error(f"Ошибка перевода:\n{traceback.format_exc()}")
+                except Exception as e:
+                    st.error(f"Ошибка перевода: {e}")
 
-    if st.button("Очистить результат", use_container_width=True):
+    # Iteration details — скрыты от пользователя
+    # (технические детали не показываем)
+
+    if st.button("Очистить результат", key="btn_clear", use_container_width=True):
         st.session_state.pop("last_result", None)
+        st.session_state.pop("check_only_mode", None)
         st.rerun()
 
+    # Советы по улучшению — вынесены вниз
     failed_results = [r for r in validation.results if not r.passed]
     if failed_results:
         st.markdown("---")
         st.markdown("#### 💡 Как улучшить результат")
-
+        # Показываем только последнюю итерацию
         if iterations:
             _, _, last_val = iterations[-1]
             display_filter_results(last_val)
 
         st.markdown("---")
-        st.markdown(
-            """
+        st.markdown("""
         <div style="background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
             <div style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 6px;">🚀 Хотите чтобы программа помогла исправить это?</div>
             <div style="font-size: 13px; color: #666; line-height: 1.5;">Выше вы видите советы — можете внести правки сами. Или доверьте это нам: программа учтёт все замечания и поможет создать улучшенную версию резюме.</div>
         </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
         st.caption("⏱ Займёт ещё ~10 минут")
-
-        if st.button("🔄 Оптимизировать резюме — Бесплатно", use_container_width=True):
+        if st.button("🔄 Оптимизировать резюме — Бесплатно", key="btn_improve", use_container_width=True):
             source = st.session_state["source_resume"]
+            # Собираем замечания из последней итерации — сбрасываем старые инструкции
             if iterations:
                 _, _, last_val = iterations[-1]
                 extra = []
@@ -794,17 +673,12 @@ if "last_result" in st.session_state:
                     if not r.passed and r.issues:
                         extra.extend(r.issues)
                 if extra:
-                    existing = source.instructions or ""
-                    combined = (
-                        (existing + "\n" if existing else "")
-                        + "Исправь следующие проблемы: "
-                        + "; ".join(extra[:5])
-                    )
+                    combined = "Исправь следующие проблемы: " + "; ".join(extra[:5])
                     source = source.model_copy(update={"instructions": combined})
                     st.session_state["source_resume"] = source
-
             st.session_state.pop("last_result", None)
             st.session_state["check_only_mode"] = False
+            st.session_state["trigger_optimization"] = True
             st.session_state["optimization_running"] = True
             st.session_state["optimization_start_time"] = time.time()
             st.rerun()
