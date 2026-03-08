@@ -365,7 +365,7 @@ user_instructions = st.text_area(
 st.caption("💡 Необязательно, но помогает получить более точный результат")
 
 # Две кнопки
-can_optimize = has_resume and has_job
+can_optimize = has_resume and has_job and not is_running
 btn_help = None
 if not has_resume:
     btn_help = "Загрузи резюме"
@@ -421,77 +421,79 @@ if should_run:
 
         idle_for_retries = 10
         last_idle_for_error = None
+        is_check_only = st.session_state.get("check_only_mode", False)
+        spinner_msg = "Проверяем резюме... не закрывай браузер!" if is_check_only else "Оптимизируем резюме... это займёт несколько минут, не закрывай браузер!"
 
-        for attempt in range(idle_for_retries + 1):
-            try:
-                iteration_results = []
-                is_check_only = st.session_state.get("check_only_mode", False)
-                run_iterations = 1 if is_check_only else max_iterations
+        with st.spinner(spinner_msg):
+            for attempt in range(idle_for_retries + 1):
+                try:
+                    iteration_results = []
+                    run_iterations = 1 if is_check_only else max_iterations
 
-                def on_iteration(i, opt, val):
-                    iteration_results.append((i, opt, val))
+                    def on_iteration(i, opt, val):
+                        iteration_results.append((i, opt, val))
 
-                def on_translation_status(msg):
-                    pass
+                    def on_translation_status(msg):
+                        pass
 
-                # Сначала оптимизируем на английском без перевода
-                optimized, validation, job = run_async(
-                    asyncio.wait_for(
-                        optimize_for_job(
-                            source,
-                            job_text,
-                            max_iterations=run_iterations,
-                            on_iteration=on_iteration,
-                            job=job,
-                            parallel=not sequential_mode,
-                            no_shame=no_shame_mode,
-                            user_instructions=instructions_value,
-                            language=None,
-                            on_translation_status=on_translation_status,
-                        ),
-                        timeout=settings.ui_optimization_timeout_seconds,
-                    )
-                )
-
-                # Переводим и делаем PDF только если не режим проверки
-                if not is_check_only:
-                    if selected_language.code != "en" and optimized and optimized.html:
-                        on_translation_status("translating")
-                        optimized = run_async(
-                            asyncio.wait_for(
-                                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status),
-                                timeout=settings.ui_translation_timeout_seconds,
-                            )
+                    # Сначала оптимизируем на английском без перевода
+                    optimized, validation, job = run_async(
+                        asyncio.wait_for(
+                            optimize_for_job(
+                                source,
+                                job_text,
+                                max_iterations=run_iterations,
+                                on_iteration=on_iteration,
+                                job=job,
+                                parallel=not sequential_mode,
+                                no_shame=no_shame_mode,
+                                user_instructions=instructions_value,
+                                language=None,
+                                on_translation_status=on_translation_status,
+                            ),
+                            timeout=settings.ui_optimization_timeout_seconds,
                         )
-
-                pdf_path = None
-                if not is_check_only and optimized and optimized.pdf_bytes:
-                    pdf_path = pdf_storage.generate_path(
-                        source.first_name, source.last_name, job.company, job.title,
-                        lang_code=selected_lang_code,
                     )
-                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-                    pdf_path.write_bytes(optimized.pdf_bytes)
 
-                    pdf_record = GeneratedPDF(
-                        path=pdf_path,
-                        source_checksum=source.checksum,
-                        company=job.company,
-                        job_title=job.title,
-                        first_name=source.first_name,
-                        last_name=source.last_name,
-                    )
-                    pdf_storage.save_record(pdf_record)
+                    # Переводим и делаем PDF только если не режим проверки
+                    if not is_check_only:
+                        if selected_language.code != "en" and optimized and optimized.html:
+                            on_translation_status("translating")
+                            optimized = run_async(
+                                asyncio.wait_for(
+                                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status),
+                                    timeout=settings.ui_translation_timeout_seconds,
+                                )
+                            )
 
-                break
-            except Exception as e:
-                if "idle_for" in str(e) and attempt < idle_for_retries:
-                    last_idle_for_error = e
-                    sleep_s = min(2 ** attempt, 15)
-                    st.warning(f"Временный сбой ИИ-сервиса (idle_for). Повтор {attempt + 1}/{idle_for_retries} через {sleep_s}с...")
-                    time.sleep(sleep_s)
-                    continue
-                raise
+                    pdf_path = None
+                    if not is_check_only and optimized and optimized.pdf_bytes:
+                        pdf_path = pdf_storage.generate_path(
+                            source.first_name, source.last_name, job.company, job.title,
+                            lang_code=selected_lang_code,
+                        )
+                        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                        pdf_path.write_bytes(optimized.pdf_bytes)
+
+                        pdf_record = GeneratedPDF(
+                            path=pdf_path,
+                            source_checksum=source.checksum,
+                            company=job.company,
+                            job_title=job.title,
+                            first_name=source.first_name,
+                            last_name=source.last_name,
+                        )
+                        pdf_storage.save_record(pdf_record)
+
+                    break
+                except Exception as e:
+                    if "idle_for" in str(e) and attempt < idle_for_retries:
+                        last_idle_for_error = e
+                        sleep_s = min(2 ** attempt, 15)
+                        st.warning(f"Временный сбой ИИ-сервиса (idle_for). Повтор {attempt + 1}/{idle_for_retries} через {sleep_s}с...")
+                        time.sleep(sleep_s)
+                        continue
+                    raise
 
         if last_idle_for_error and attempt == idle_for_retries:
             raise last_idle_for_error
