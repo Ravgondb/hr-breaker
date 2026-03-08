@@ -2,6 +2,7 @@ import asyncio
 import base64
 import html as _html
 import time
+import traceback
 import nest_asyncio
 import streamlit as st
 
@@ -130,12 +131,18 @@ FILTER_INFO = {
     },
 }
 
-def display_filter_results(validation: ValidationResult):
+def display_filter_results(validation: ValidationResult, show_all: bool = False):
     for result in validation.results:
-        if result.passed:
+        if result.passed and not show_all:
             continue
+
         info = FILTER_INFO.get(result.filter_name, {})
         name = info.get("name", _html.escape(result.filter_name))
+
+        if result.passed:
+            st.success(f"✅ {name} пройдено")
+            continue
+
         fail_msg = info.get("fail_msg", f"❌ {name}")
         explanation = info.get("explanation", "")
         advice = info.get("advice", "")
@@ -358,7 +365,7 @@ user_instructions = st.text_area(
 st.caption("💡 Необязательно, но помогает получить более точный результат")
 
 # Две кнопки
-can_optimize = has_resume and has_job and not is_running
+can_optimize = has_resume and has_job
 btn_help = None
 if not has_resume:
     btn_help = "Загрузи резюме"
@@ -368,61 +375,33 @@ elif not has_job:
 btn_col1, btn_col2 = st.columns(2)
 with btn_col1:
     clicked_check = st.button(
-        "🔍 Проверить резюме", key="btn_check", disabled=not can_optimize, use_container_width=True, help=btn_help
+        "🔍 Проверить резюме",
+        key="btn_check",
+        disabled=not can_optimize,
+        use_container_width=True,
+        help=btn_help,
     )
 with btn_col2:
     clicked_optimize = st.button(
-        "🚀 Оптимизировать резюме — Бесплатно", key="btn_optimize", disabled=not can_optimize, use_container_width=True, help=btn_help
+        "🚀 Оптимизировать резюме — Бесплатно",
+        key="btn_optimize",
+        disabled=not can_optimize,
+        use_container_width=True,
+        help=btn_help,
     )
-clicked = clicked_check or clicked_optimize
-check_only = clicked_check and not clicked_optimize
 
-# Триггер запуска — либо кнопка нажата, либо после rerun от улучшалки
-should_run = clicked or st.session_state.pop("trigger_optimization", False)
+if clicked_check or clicked_optimize:
+    st.session_state.pop("last_result", None)
+    st.session_state["check_only_mode"] = bool(clicked_check)
+    st.session_state["trigger_optimization"] = True
+    st.rerun()
 
-# Показываем баннер пока идёт оптимизация
-if is_running:
-    if "optimization_start_time" not in st.session_state:
-        st.session_state["optimization_start_time"] = time.time()
+# Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
+should_run = st.session_state.pop("trigger_optimization", False)
 
-    elapsed = time.time() - st.session_state.get("optimization_start_time", time.time())
 
-    if elapsed > 45 * 60:
-        st.session_state["optimization_running"] = False
-        st.session_state.pop("optimization_start_time", None)
-        st.error("⚠️ Произошла ошибка — попробуй снова.")
-        st.rerun()
-    else:
-        is_check = st.session_state.get("check_only_mode", False)
-        if is_check:
-            st.markdown("""
-            <style>
-            @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
-            .loader { width:28px; height:28px; border:3px solid #ffc107; border-top:3px solid transparent; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 10px; }
-            </style>
-            <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:10px; padding:18px; text-align:center; margin-top:8px;">
-                <div class="loader"></div>
-                <div style="font-weight:600; font-size:15px; color:#856404;">Проверяем резюме...</div>
-                <div style="font-size:13px; color:#856404; margin-top:4px;">Анализируем соответствие вакансии · Не закрывай браузер!</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <style>
-            @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1)} }
-            .rocket { font-size:28px; animation:pulse 1.2s ease-in-out infinite; display:block; margin-bottom:8px; }
-            </style>
-            <div style="background:#e8f4fd; border:1px solid #0984e3; border-radius:10px; padding:18px; text-align:center; margin-top:8px;">
-                <span class="rocket">🚀</span>
-                <div style="font-weight:600; font-size:15px; color:#0984e3;">Оптимизируем резюме...</div>
-                <div style="font-size:13px; color:#0984e3; margin-top:4px;">Итерация 1 из """ + str(max_iterations) + """ · Это может занять несколько минут · Не закрывай браузер!</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-# Настройки в раскрывающемся блоке над кнопкой
 if should_run:
     if "source_resume" not in st.session_state:
-        st.session_state.pop("trigger_optimization", None)
         st.session_state["optimization_running"] = False
         st.rerun()
 
@@ -434,66 +413,88 @@ if should_run:
         st.session_state["source_resume"] = source
     st.session_state["optimization_running"] = True
     st.session_state["optimization_start_time"] = time.time()
-    # check_only_mode устанавливаем только при прямом нажатии кнопки
-    if clicked:
-        st.session_state["check_only_mode"] = check_only
     error_occurred = None
 
     try:
         with st.spinner("Анализируем вакансию..."):
             job = cached_parse_job(job_text)
 
-        iteration_results = []
-        is_check_only = st.session_state.get("check_only_mode", False)
-        run_iterations = 1 if is_check_only else max_iterations
+        idle_for_retries = 10
+        last_idle_for_error = None
 
-        def on_iteration(i, opt, val):
-            iteration_results.append((i, opt, val))
+        for attempt in range(idle_for_retries + 1):
+            try:
+                iteration_results = []
+                is_check_only = st.session_state.get("check_only_mode", False)
+                run_iterations = 1 if is_check_only else max_iterations
 
-        def on_translation_status(msg):
-            pass
+                def on_iteration(i, opt, val):
+                    iteration_results.append((i, opt, val))
 
-        # Сначала оптимизируем на английском без перевода
-        optimized, validation, job = run_async(
-            optimize_for_job(
-                source,
-                job_text,
-                max_iterations=run_iterations,
-                on_iteration=on_iteration,
-                job=job,
-                parallel=not sequential_mode,
-                no_shame=no_shame_mode,
-                user_instructions=instructions_value,
-                language=None,
-                on_translation_status=on_translation_status,
-            )
-        )
+                def on_translation_status(msg):
+                    pass
 
-        # Переводим и делаем PDF только если не режим проверки
-        if not is_check_only:
-            if selected_language.code != "en" and optimized and optimized.html:
-                on_translation_status("translating")
-                optimized = run_async(
-                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                # Сначала оптимизируем на английском без перевода
+                optimized, validation, job = run_async(
+                    asyncio.wait_for(
+                        optimize_for_job(
+                            source,
+                            job_text,
+                            max_iterations=run_iterations,
+                            on_iteration=on_iteration,
+                            job=job,
+                            parallel=not sequential_mode,
+                            no_shame=no_shame_mode,
+                            user_instructions=instructions_value,
+                            language=None,
+                            on_translation_status=on_translation_status,
+                        ),
+                        timeout=settings.ui_optimization_timeout_seconds,
+                    )
                 )
-        pdf_path = None
-        if not is_check_only and optimized and optimized.pdf_bytes:
-            pdf_path = pdf_storage.generate_path(
-                source.first_name, source.last_name, job.company, job.title,
-                lang_code=selected_lang_code,
-            )
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            pdf_path.write_bytes(optimized.pdf_bytes)
 
-            pdf_record = GeneratedPDF(
-                path=pdf_path,
-                source_checksum=source.checksum,
-                company=job.company,
-                job_title=job.title,
-                first_name=source.first_name,
-                last_name=source.last_name,
-            )
-            pdf_storage.save_record(pdf_record)
+                # Переводим и делаем PDF только если не режим проверки
+                if not is_check_only:
+                    if selected_language.code != "en" and optimized and optimized.html:
+                        on_translation_status("translating")
+                        optimized = run_async(
+                            asyncio.wait_for(
+                                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status),
+                                timeout=settings.ui_translation_timeout_seconds,
+                            )
+                        )
+
+                pdf_path = None
+                if not is_check_only and optimized and optimized.pdf_bytes:
+                    pdf_path = pdf_storage.generate_path(
+                        source.first_name, source.last_name, job.company, job.title,
+                        lang_code=selected_lang_code,
+                    )
+                    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                    pdf_path.write_bytes(optimized.pdf_bytes)
+
+                    pdf_record = GeneratedPDF(
+                        path=pdf_path,
+                        source_checksum=source.checksum,
+                        company=job.company,
+                        job_title=job.title,
+                        first_name=source.first_name,
+                        last_name=source.last_name,
+                    )
+                    pdf_storage.save_record(pdf_record)
+
+                break
+            except Exception as e:
+                if "idle_for" in str(e) and attempt < idle_for_retries:
+                    last_idle_for_error = e
+                    sleep_s = min(2 ** attempt, 15)
+                    st.warning(f"Временный сбой ИИ-сервиса (idle_for). Повтор {attempt + 1}/{idle_for_retries} через {sleep_s}с...")
+                    time.sleep(sleep_s)
+                    continue
+                raise
+
+        if last_idle_for_error and attempt == idle_for_retries:
+            raise last_idle_for_error
 
         st.session_state["last_result"] = {
             "optimized": optimized,
@@ -502,15 +503,26 @@ if should_run:
             "iterations": iteration_results,
             "pdf_path": pdf_path,
         }
+    except TimeoutError:
+        error_occurred = TimeoutError("Превышено время ожидания ответа от ИИ. Попробуй ещё раз.")
     except Exception as e:
         error_occurred = e
+        st.session_state["last_error_traceback"] = traceback.format_exc()
     finally:
         st.session_state["optimization_running"] = False
         st.session_state.pop("optimization_start_time", None)
 
     if error_occurred:
-        st.error(f"Ошибка оптимизации: {error_occurred}")
+        if "idle_for" in str(error_occurred):
+            st.error("Ошибка оптимизации: временный сбой ИИ-сервиса. Подожди 20–30 секунд и попробуй снова.")
+        else:
+            st.error(f"Ошибка оптимизации: {error_occurred}")
+        last_tb = st.session_state.pop("last_error_traceback", None)
+        if last_tb:
+            with st.expander("Технические детали ошибки", expanded=False):
+                st.code(last_tb)
     else:
+        st.session_state["idle_for_ui_retries"] = 0
         st.rerun()
 
 # Display last result if exists
@@ -537,11 +549,13 @@ if "last_result" in st.session_state:
             st.session_state["optimization_start_time"] = time.time()
             st.rerun()
 
+    total_count = len(validation.results)
+    failed_count = sum(1 for r in validation.results if not r.passed)
+    passed_count = total_count - failed_count
+
     if validation.passed:
         st.success("✅ Все проверки пройдены!")
     else:
-        failed_count = sum(1 for r in validation.results if not r.passed)
-        total_count = len(validation.results)
         if is_check_result:
             st.warning(
                 f"Проверка завершена! Не пройдено критериев: {failed_count} из {total_count} — смотри советы внизу."
@@ -550,6 +564,9 @@ if "last_result" in st.session_state:
             st.warning(
                 f"Резюме готово! Не пройдено проверок: {failed_count} из {total_count} — смотри советы внизу."
             )
+
+    if is_check_result:
+        st.info(f"📊 Итог проверки: пройдено {passed_count} из {total_count}, не пройдено {failed_count}.")
 
     # PDF download
     if pdf_path and pdf_path.exists():
@@ -570,7 +587,6 @@ if "last_result" in st.session_state:
             </script>
         """, height=0)
 
-        st.info("📥 PDF скачивается автоматически. Если скачивание не началось — нажми кнопку ниже.")
         st.download_button(
             label="⬇️ Скачать PDF вручную",
             data=pdf_bytes,
@@ -647,38 +663,46 @@ if "last_result" in st.session_state:
 
     # Советы по улучшению — вынесены вниз
     failed_results = [r for r in validation.results if not r.passed]
+
+    if is_check_result:
+        st.markdown("---")
+        st.markdown("#### 📋 Детали проверки")
+        # В режиме проверки показываем все фильтры (и пройденные, и непройденные)
+        if iterations:
+            _, _, last_val = iterations[-1]
+            display_filter_results(last_val, show_all=True)
+
     if failed_results:
         st.markdown("---")
         st.markdown("#### 💡 Как улучшить результат")
-        # Показываем только последнюю итерацию
         if iterations:
             _, _, last_val = iterations[-1]
             display_filter_results(last_val)
 
-        st.markdown("---")
-        st.markdown("""
-        <div style="background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
-            <div style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 6px;">🚀 Хотите чтобы программа помогла исправить это?</div>
-            <div style="font-size: 13px; color: #666; line-height: 1.5;">Выше вы видите советы — можете внести правки сами. Или доверьте это нам: программа учтёт все замечания и поможет создать улучшенную версию резюме.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.caption("⏱ Займёт ещё ~10 минут")
-        if st.button("🔄 Оптимизировать резюме — Бесплатно", key="btn_improve", use_container_width=True):
-            source = st.session_state["source_resume"]
-            # Собираем замечания из последней итерации — сбрасываем старые инструкции
-            if iterations:
-                _, _, last_val = iterations[-1]
-                extra = []
-                for r in last_val.results:
-                    if not r.passed and r.issues:
-                        extra.extend(r.issues)
-                if extra:
-                    combined = "Исправь следующие проблемы: " + "; ".join(extra[:5])
-                    source = source.model_copy(update={"instructions": combined})
-                    st.session_state["source_resume"] = source
-            st.session_state.pop("last_result", None)
-            st.session_state["check_only_mode"] = False
-            st.session_state["trigger_optimization"] = True
-            st.session_state["optimization_running"] = True
-            st.session_state["optimization_start_time"] = time.time()
-            st.rerun()
+        if is_check_result:
+            st.markdown("---")
+            st.markdown("""
+            <div style="background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+                <div style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 6px;">🚀 Хотите чтобы программа помогла исправить это?</div>
+                <div style="font-size: 13px; color: #666; line-height: 1.5;">Выше вы видите советы — можете внести правки сами. Или доверьте это нам: программа учтёт все замечания и поможет создать улучшенную версию резюме.</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.caption("⏱ Займёт ещё ~10 минут")
+            if st.button("🔄 Оптимизировать резюме — Бесплатно", key="btn_improve", use_container_width=True):
+                source = st.session_state["source_resume"]
+                if iterations:
+                    _, _, last_val = iterations[-1]
+                    extra = []
+                    for r in last_val.results:
+                        if not r.passed and r.issues:
+                            extra.extend(r.issues)
+                    if extra:
+                        combined = "Исправь следующие проблемы: " + "; ".join(extra[:5])
+                        source = source.model_copy(update={"instructions": combined})
+                        st.session_state["source_resume"] = source
+                st.session_state.pop("last_result", None)
+                st.session_state["check_only_mode"] = False
+                st.session_state["trigger_optimization"] = True
+                st.session_state["optimization_running"] = True
+                st.session_state["optimization_start_time"] = time.time()
+                st.rerun()
