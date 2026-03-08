@@ -422,7 +422,7 @@ if should_run:
         idle_for_retries = 10
         last_idle_for_error = None
         is_check_only = st.session_state.get("check_only_mode", False)
-        spinner_msg = "Проверяем резюме... не закрывай браузер!" if is_check_only else "Оптимизируем резюме... это займёт несколько минут, не закрывай браузер!"
+        spinner_msg = "Проверяем резюме... не закрывай браузер!" if is_check_only else "Оптимизируем резюме... это может занять 10–20 минут, не закрывай браузер!"
 
         with st.spinner(spinner_msg):
             for attempt in range(idle_for_retries + 1):
