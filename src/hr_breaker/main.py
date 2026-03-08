@@ -438,20 +438,17 @@ if should_run:
 
                     # Сначала оптимизируем на английском без перевода
                     optimized, validation, job = run_async(
-                        asyncio.wait_for(
-                            optimize_for_job(
-                                source,
-                                job_text,
-                                max_iterations=run_iterations,
-                                on_iteration=on_iteration,
-                                job=job,
-                                parallel=not sequential_mode,
-                                no_shame=no_shame_mode,
-                                user_instructions=instructions_value,
-                                language=None,
-                                on_translation_status=on_translation_status,
-                            ),
-                            timeout=settings.ui_optimization_timeout_seconds,
+                        optimize_for_job(
+                            source,
+                            job_text,
+                            max_iterations=run_iterations,
+                            on_iteration=on_iteration,
+                            job=job,
+                            parallel=not sequential_mode,
+                            no_shame=no_shame_mode,
+                            user_instructions=instructions_value,
+                            language=None,
+                            on_translation_status=on_translation_status,
                         )
                     )
 
@@ -460,10 +457,7 @@ if should_run:
                         if selected_language.code != "en" and optimized and optimized.html:
                             on_translation_status("translating")
                             optimized = run_async(
-                                asyncio.wait_for(
-                                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status),
-                                    timeout=settings.ui_translation_timeout_seconds,
-                                )
+                                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
                             )
 
                     pdf_path = None
