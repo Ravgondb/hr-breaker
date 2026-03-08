@@ -422,19 +422,35 @@ if should_run:
         idle_for_retries = 10
         last_idle_for_error = None
         is_check_only = st.session_state.get("check_only_mode", False)
-        spinner_msg = "Проверяем резюме... не закрывай браузер!" if is_check_only else "Оптимизируем резюме... это может занять 10–20 минут, не закрывай браузер!"
+        run_iterations = 1 if is_check_only else max_iterations
 
-        with st.spinner(spinner_msg):
+        # Плейсхолдер для live-статуса — обновляется из on_iteration
+        status_box = st.empty()
+        if is_check_only:
+            status_box.info("🔍 Проверяем резюме... не закрывай браузер!")
+        else:
+            status_box.info(f"🚀 Запускаем оптимизацию — {run_iterations} итерации. Это займёт **15–25 минут**, не закрывай браузер!")
+
+        with st.spinner("Работаем..."):
             for attempt in range(idle_for_retries + 1):
                 try:
                     iteration_results = []
-                    run_iterations = 1 if is_check_only else max_iterations
 
                     def on_iteration(i, opt, val):
                         iteration_results.append((i, opt, val))
+                        passed = sum(1 for r in val.results if r.passed)
+                        total = len(val.results)
+                        if is_check_only:
+                            status_box.info(f"🔍 Анализ завершён — пройдено {passed} из {total} проверок")
+                        else:
+                            if i < run_iterations:
+                                status_box.info(f"✅ Итерация {i} из {run_iterations} готова. Продолжаем...")
+                            else:
+                                status_box.info(f"✅ Все {run_iterations} итерации готовы — пройдено {passed}/{total} проверок. Генерируем PDF...")
 
                     def on_translation_status(msg):
-                        pass
+                        if msg == "translating":
+                            status_box.info("🌐 Переводим резюме...")
 
                     # Сначала оптимизируем на английском без перевода
                     optimized, validation, job = run_async(
