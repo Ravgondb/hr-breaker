@@ -216,6 +216,17 @@ selected_language = get_language(selected_lang_code)
 col_resume, col_job = st.columns(2)
 
 is_running = st.session_state.get("optimization_running", False)
+# Если флаг стоит но нет активного триггера — значит предыдущий запуск завершился
+# (нормально или с ошибкой), сбрасываем немедленно
+if is_running and not st.session_state.get("trigger_optimization", False):
+    # Проверяем: если optimization_start_time есть — оптимизация реально шла
+    # но раз мы здесь без триггера, значит она уже закончилась (finally сбросил флаг)
+    # или упала без finally. В любом случае сбрасываем.
+    start_time = st.session_state.get("optimization_start_time")
+    if start_time is None:
+        # Нет start_time — флаг точно застрял
+        st.session_state["optimization_running"] = False
+        is_running = False
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
@@ -436,17 +447,8 @@ if clicked_optimize:
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
 should_run = st.session_state.pop("trigger_optimization", False)
 
-# Если оптимизация уже идёт но триггер не установлен — страница ждёт,
-# не рендерим ничего лишнего ниже (убирает дублирование кнопок)
+# Оптимизация идёт прямо сейчас (should_run только что запустил её выше) — стопаем рендер
 if is_running and not should_run:
-    # Кнопка аварийного сброса — если что-то зависло
-    start_time = st.session_state.get("optimization_start_time", 0)
-    elapsed = time.time() - start_time if start_time else 0
-    if elapsed > 30:  # показываем через 30 секунд
-        if st.button("✖ Отменить / что-то пошло не так", key="btn_cancel", type="secondary"):
-            st.session_state["optimization_running"] = False
-            st.session_state.pop("trigger_optimization", None)
-            st.rerun()
     st.stop()
 
 
