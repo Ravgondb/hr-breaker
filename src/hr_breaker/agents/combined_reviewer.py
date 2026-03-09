@@ -134,10 +134,11 @@ Return ALL fields:
 - keyword_score, experience_score, education_score, overall_fit_score: 0.0-1.0
 - disqualified: true if auto-reject triggered
 - ats_issues: specific ATS failures found
+
+IMPORTANT: Write ALL text fields (visual_issues, visual_feedback, ats_issues) in Russian.
 """
 
 
-@lru_cache
 def get_combined_reviewer_agent() -> Agent:
     agent = Agent(
         get_flash_model(),
@@ -197,14 +198,14 @@ async def combined_review(
         return (
             CombinedReviewResult(
                 looks_professional=False,
-                visual_issues=[f"Rendering failed: {str(e)}"],
+                visual_issues=[f"Ошибка рендеринга: {str(e)}"],
                 visual_feedback=str(e),
                 keyword_score=0.0,
                 experience_score=0.0,
                 education_score=0.0,
                 overall_fit_score=0.0,
                 disqualified=True,
-                ats_issues=["Cannot evaluate - rendering failed"],
+                ats_issues=["Невозможно оценить — ошибка рендеринга"],
             ),
             None,
             0,
@@ -218,14 +219,14 @@ async def combined_review(
         return (
             CombinedReviewResult(
                 looks_professional=False,
-                visual_issues=[f"PDF to image conversion failed: {str(e)}"],
+                visual_issues=[f"Ошибка конвертации PDF: {str(e)}"],
                 visual_feedback=str(e),
                 keyword_score=0.0,
                 experience_score=0.0,
                 education_score=0.0,
                 overall_fit_score=0.0,
                 disqualified=True,
-                ats_issues=["Cannot evaluate - PDF conversion failed"],
+                ats_issues=["Невозможно оценить — ошибка конвертации PDF"],
             ),
             pdf_bytes,
             0,
