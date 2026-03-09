@@ -168,9 +168,15 @@ def display_filter_results(validation: ValidationResult, show_all: bool = False)
 
         if advice:
             st.info(f"💡 **Что можно сделать:** {advice}")
-        if result.issues:
+        # Фильтруем технические сообщения — пользователю они не нужны
+        _skip_fragments = ("без изображения", "изображени", "image", "rendering", "рендер", "конвертац")
+        visible_issues = [
+            issue for issue in (result.issues or [])
+            if not any(f in issue.lower() for f in _skip_fragments)
+        ]
+        if visible_issues:
             with st.expander("💬 Комментарии", expanded=False):
-                for issue in result.issues:
+                for issue in visible_issues:
                     st.write(f"- {issue}")
 
 sequential_mode = False  # параллельный режим включён
@@ -433,6 +439,14 @@ should_run = st.session_state.pop("trigger_optimization", False)
 # Если оптимизация уже идёт но триггер не установлен — страница ждёт,
 # не рендерим ничего лишнего ниже (убирает дублирование кнопок)
 if is_running and not should_run:
+    # Кнопка аварийного сброса — если что-то зависло
+    start_time = st.session_state.get("optimization_start_time", 0)
+    elapsed = time.time() - start_time if start_time else 0
+    if elapsed > 30:  # показываем через 30 секунд
+        if st.button("✖ Отменить / что-то пошло не так", key="btn_cancel", type="secondary"):
+            st.session_state["optimization_running"] = False
+            st.session_state.pop("trigger_optimization", None)
+            st.rerun()
     st.stop()
 
 
@@ -507,10 +521,23 @@ if should_run:
                     # Переводим и делаем PDF только если не режим проверки
                     if not is_check_only:
                         if selected_language.code != "en" and optimized and optimized.html:
-                            on_translation_status("translating")
-                            optimized = run_async(
-                                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-                            )
+                            status_box.info("🌐 Переводим резюме на русский... не закрывай браузер!")
+                            def on_translation_status(msg):
+                                status_box.info(f"🌐 {msg}")
+                            import concurrent.futures
+                            try:
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                    future = executor.submit(
+                                        run_async,
+                                        translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                                    )
+                                    translated = future.result(timeout=settings.ui_translation_timeout_seconds)
+                                if translated:
+                                    optimized = translated
+                            except concurrent.futures.TimeoutError:
+                                status_box.warning("⚠️ Перевод занял слишком много времени — сохраняем резюме на английском")
+                            except Exception as tr_e:
+                                status_box.warning(f"⚠️ Ошибка перевода — сохраняем резюме на английском: {tr_e}")
 
                     pdf_path = None
                     if not is_check_only and optimized and optimized.pdf_bytes:
@@ -737,6 +764,7 @@ if "last_result" in st.session_state:
                         st.session_state["source_resume"] = source
                 st.session_state.pop("last_result", None)
                 st.session_state["check_only_mode"] = False
+                st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
                 st.session_state["optimization_running"] = True
                 st.rerun()
