@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     agent_name_extractor_chars: int = 2000
     # Translation settings
     default_language: str = "en"
-    translation_max_iterations: int = 2
+    translation_max_iterations: int = 1
     # Web UI safety timeouts (prevents endless "loading" states)
     ui_optimization_timeout_seconds: int = 900
     ui_translation_timeout_seconds: int = 300
