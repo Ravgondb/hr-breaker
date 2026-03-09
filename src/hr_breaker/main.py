@@ -75,9 +75,9 @@ def cached_parse_job(text: str):
 FILTER_INFO = {
     "LLMChecker": {
         "name": "ATS-проверка",
-        "fail_msg": "🔴 Возникли вопросы по ATS-критериям",
-        "color": "#ffd6d6",
-        "border": "#ff4b4b",
+        "fail_msg": "🟡 Возникли вопросы по ATS-критериям",
+        "color": "#fff9db",
+        "border": "#ffc107",
         "explanation": "Не стоит пугаться — наши фильтры настроены на самые придирчивые ATS-системы. Это значит что твоё резюме могут придирчиво проверить по структуре, ключевым словам и формулировкам. Подробнее — в комментариях ниже.",
         "advice_check": "Нажми **«Оптимизировать резюме»** ниже — программа сама доработает резюме под эти критерии.",
         "advice_optimize": "Попробуй запустить оптимизацию ещё раз. Если ошибка повторяется — добавь в инструкции: *«Переформулируй опыт используя глаголы достижений: увеличил, сократил, внедрил, запустил»* или включи **Агрессивную оптимизацию** в настройках.",
@@ -136,6 +136,10 @@ FILTER_INFO = {
 def display_filter_results(validation: ValidationResult, show_all: bool = False):
     is_check_mode = st.session_state.get("check_only_mode", False)
     for result in validation.results:
+        # В режиме проверки галлюцинации невозможны — фильтр не показываем
+        if is_check_mode and result.filter_name == "HallucinationChecker":
+            continue
+
         if result.passed and not show_all:
             continue
 
@@ -192,20 +196,37 @@ st.markdown("""
 <p style="font-size:13px; color:#666; margin-bottom:16px;">Загрузи резюме и вакансию — <b>бесплатно проверим</b> насколько оно подходит и дадим советы по улучшению. Хочешь большего — оптимизируем резюме под вакансию и отдадим готовый PDF.</p>
 """, unsafe_allow_html=True)
 
-# Настройки сразу під лозунгом
-with st.expander("⚙️ Дополнительные настройки"):
-    set_col1, set_col2 = st.columns([1, 1])
-    with set_col1:
-        no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False, key="no_shame_mode")
-        st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой.")
-    with set_col2:
-        st.selectbox(
-            "Язык резюме",
-            options=_lang_options,
-            index=_default_lang_idx,
-            format_func=lambda code: _lang_labels[code],
-            key="selected_lang_code",
-        )
+# Настройки и инструкции — только для оптимизации
+show_optimize_options = st.session_state.get("show_optimize_options", False)
+
+if not show_optimize_options:
+    no_shame_mode = False
+    selected_lang_code = "ru" if "ru" in _lang_options else _lang_options[0]
+    user_instructions = ""
+else:
+    with st.expander("⚙️ Дополнительные настройки", expanded=True):
+        set_col1, set_col2 = st.columns([1, 1])
+        with set_col1:
+            no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False, key="no_shame_mode")
+            st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой.")
+        with set_col2:
+            st.selectbox(
+                "Язык резюме",
+                options=_lang_options,
+                index=_default_lang_idx,
+                format_func=lambda code: _lang_labels[code],
+                key="selected_lang_code",
+            )
+
+    if "user_instructions" not in st.session_state:
+        st.session_state["user_instructions"] = ""
+    user_instructions = st.text_area(
+        "Дополнительные инструкции (необязательно)",
+        placeholder="Например: сделай акцент на управлении командой, я перехожу из маркетинга в продакты...",
+        help="Напиши пожелания для ИИ — например: «сделай акцент на управлении командой» или «я перехожу из маркетинга в продакты»",
+        key="user_instructions",
+    )
+    st.caption("💡 Необязательно, но помогает получить более точный результат")
 
 selected_lang_code = st.session_state.get("selected_lang_code", "ru")
 if selected_lang_code not in _lang_options:
@@ -359,18 +380,8 @@ with col_job:
                 st.session_state.pop("scrape_failed_url", None)
                 st.rerun()
 
-# User instructions
-if "user_instructions" not in st.session_state:
-    st.session_state["user_instructions"] = ""
-user_instructions = st.text_area(
-    "Дополнительные инструкции (необязательно)",
-    placeholder="Например: сделай акцент на управлении командой, я перехожу из маркетинга в продакты...",
-    help="Напиши пожелания для ИИ — например: «сделай акцент на управлении командой» или «я перехожу из маркетинга в продакты»",
-    key="user_instructions",
-)
-st.caption("💡 Необязательно, но помогает получить более точный результат")
-
 # Две кнопки
+can_check = has_resume and has_job and not is_running
 can_optimize = has_resume and has_job and not is_running
 btn_help = None
 if not has_resume:
@@ -383,7 +394,7 @@ with btn_col1:
     clicked_check = st.button(
         "🔍 Проверить резюме",
         key="btn_check",
-        disabled=not can_optimize,
+        disabled=not can_check,
         use_container_width=True,
         help=btn_help,
     )
@@ -396,11 +407,27 @@ with btn_col2:
         help=btn_help,
     )
 
-if clicked_check or clicked_optimize:
+if clicked_check:
+    # Проверка — скрываем настройки, запускаем сразу
+    st.session_state["show_optimize_options"] = False
     st.session_state.pop("last_result", None)
-    st.session_state["check_only_mode"] = bool(clicked_check)
+    st.session_state["check_only_mode"] = True
     st.session_state["trigger_optimization"] = True
+    st.session_state["optimization_running"] = True
     st.rerun()
+
+if clicked_optimize:
+    if not show_optimize_options:
+        # Первый клик — раскрываем настройки и инструкции
+        st.session_state["show_optimize_options"] = True
+        st.rerun()
+    else:
+        # Второй клик (настройки уже видны) — запускаем оптимизацию
+        st.session_state.pop("last_result", None)
+        st.session_state["check_only_mode"] = False
+        st.session_state["trigger_optimization"] = True
+        st.session_state["optimization_running"] = True
+        st.rerun()
 
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
 should_run = st.session_state.pop("trigger_optimization", False)
