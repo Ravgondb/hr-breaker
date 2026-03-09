@@ -738,4 +738,5 @@ if "last_result" in st.session_state:
                 st.session_state.pop("last_result", None)
                 st.session_state["check_only_mode"] = False
                 st.session_state["trigger_optimization"] = True
+                st.session_state["optimization_running"] = True
                 st.rerun()
