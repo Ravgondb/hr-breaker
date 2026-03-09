@@ -354,7 +354,7 @@ with col_job:
                 st.rerun()
 
 # Настройки и инструкции — только для оптимизации, прямо перед кнопками
-if show_optimize_options:
+if show_optimize_options and not is_running:
     with st.expander("⚙️ Дополнительные настройки", expanded=True):
         set_col1, set_col2 = st.columns([1, 1])
         with set_col1:
@@ -429,6 +429,11 @@ if clicked_optimize:
 
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
 should_run = st.session_state.pop("trigger_optimization", False)
+
+# Если оптимизация уже идёт но триггер не установлен — страница ждёт,
+# не рендерим ничего лишнего ниже (убирает дублирование кнопок)
+if is_running and not should_run:
+    st.stop()
 
 
 if should_run:
