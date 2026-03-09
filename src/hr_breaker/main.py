@@ -196,37 +196,10 @@ st.markdown("""
 <p style="font-size:13px; color:#666; margin-bottom:16px;">Загрузи резюме и вакансию — <b>бесплатно проверим</b> насколько оно подходит и дадим советы по улучшению. Хочешь большего — оптимизируем резюме под вакансию и отдадим готовый PDF.</p>
 """, unsafe_allow_html=True)
 
-# Настройки и инструкции — только для оптимизации
+# Настройки и инструкции — читаем флаг, рендерим позже (перед кнопками)
 show_optimize_options = st.session_state.get("show_optimize_options", False)
-
-if not show_optimize_options:
-    no_shame_mode = False
-    selected_lang_code = "ru" if "ru" in _lang_options else _lang_options[0]
-    user_instructions = ""
-else:
-    with st.expander("⚙️ Дополнительные настройки", expanded=True):
-        set_col1, set_col2 = st.columns([1, 1])
-        with set_col1:
-            no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False, key="no_shame_mode")
-            st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала. Проверь резюме перед отправкой.")
-        with set_col2:
-            st.selectbox(
-                "Язык резюме",
-                options=_lang_options,
-                index=_default_lang_idx,
-                format_func=lambda code: _lang_labels[code],
-                key="selected_lang_code",
-            )
-
-    if "user_instructions" not in st.session_state:
-        st.session_state["user_instructions"] = ""
-    user_instructions = st.text_area(
-        "Дополнительные инструкции (необязательно)",
-        placeholder="Например: сделай акцент на управлении командой, я перехожу из маркетинга в продакты...",
-        help="Напиши пожелания для ИИ — например: «сделай акцент на управлении командой» или «я перехожу из маркетинга в продакты»",
-        key="user_instructions",
-    )
-    st.caption("💡 Необязательно, но помогает получить более точный результат")
+no_shame_mode = False
+user_instructions = ""
 
 selected_lang_code = st.session_state.get("selected_lang_code", "ru")
 if selected_lang_code not in _lang_options:
@@ -379,6 +352,31 @@ with col_job:
                 st.session_state["job_text"] = pasted_job
                 st.session_state.pop("scrape_failed_url", None)
                 st.rerun()
+
+# Настройки и инструкции — только для оптимизации, прямо перед кнопками
+if show_optimize_options:
+    with st.expander("⚙️ Дополнительные настройки", expanded=True):
+        set_col1, set_col2 = st.columns([1, 1])
+        with set_col1:
+            no_shame_mode = st.checkbox("Агрессивная оптимизация", value=False, key="no_shame_mode")
+            st.caption("ИИ сильнее переработает текст — резюме может сильно отличаться от оригинала.")
+        with set_col2:
+            st.selectbox(
+                "Язык резюме",
+                options=_lang_options,
+                index=_default_lang_idx,
+                format_func=lambda code: _lang_labels[code],
+                key="selected_lang_code",
+            )
+    if "user_instructions" not in st.session_state:
+        st.session_state["user_instructions"] = ""
+    user_instructions = st.text_area(
+        "Дополнительные инструкции (необязательно)",
+        placeholder="Например: сделай акцент на управлении командой, я перехожу из маркетинга в продакты...",
+        help="Напиши пожелания для ИИ",
+        key="user_instructions",
+    )
+    st.caption("💡 Необязательно, но помогает получить более точный результат")
 
 # Две кнопки
 can_check = has_resume and has_job and not is_running
@@ -585,8 +583,13 @@ if "last_result" in st.session_state:
     # Если режим проверки — показываем только статус
     is_check_result = st.session_state.get("check_only_mode", False)
 
-    total_count = len(validation.results)
-    failed_count = sum(1 for r in validation.results if not r.passed)
+    # В режиме проверки HallucinationChecker не показываем и не считаем
+    visible_results = [
+        r for r in validation.results
+        if not (is_check_result and r.filter_name == "HallucinationChecker")
+    ]
+    total_count = len(visible_results)
+    failed_count = sum(1 for r in visible_results if not r.passed)
     passed_count = total_count - failed_count
 
     if validation.passed:
@@ -697,7 +700,7 @@ if "last_result" in st.session_state:
         st.rerun()
 
     # Детали проверки — все фильтры (пройденные и нет)
-    failed_results = [r for r in validation.results if not r.passed]
+    failed_results = [r for r in visible_results if not r.passed]
 
     if is_check_result:
         st.markdown("---")
