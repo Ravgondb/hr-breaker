@@ -577,8 +577,7 @@ if "last_result" in st.session_state:
                 f"Резюме готово! Не пройдено проверок: {failed_count} из {total_count} — смотри советы внизу."
             )
 
-    if is_check_result:
-        st.info(f"📊 Итог проверки: пройдено {passed_count} из {total_count}, не пройдено {failed_count}.")
+
 
     # PDF download
     if pdf_path and pdf_path.exists():
