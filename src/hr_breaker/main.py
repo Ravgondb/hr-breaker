@@ -521,23 +521,33 @@ if should_run:
                     # Переводим и делаем PDF только если не режим проверки
                     if not is_check_only:
                         if selected_language.code != "en" and optimized and optimized.html:
-                            status_box.info("🌐 Переводим резюме на русский... не закрывай браузер!")
-                            def on_translation_status(msg):
-                                status_box.info(f"🌐 {msg}")
                             import concurrent.futures
-                            try:
-                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                                    future = executor.submit(
-                                        run_async,
-                                        translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-                                    )
-                                    translated = future.result(timeout=settings.ui_translation_timeout_seconds)
-                                if translated:
-                                    optimized = translated
-                            except concurrent.futures.TimeoutError:
-                                status_box.warning("⚠️ Перевод занял слишком много времени — сохраняем резюме на английском")
-                            except Exception as tr_e:
-                                status_box.warning(f"⚠️ Ошибка перевода — сохраняем резюме на английском: {tr_e}")
+                            translation_attempts = 3
+                            translated = None
+                            for tr_attempt in range(translation_attempts):
+                                if tr_attempt == 0:
+                                    status_box.info("🌐 Переводим резюме... не закрывай браузер!")
+                                else:
+                                    status_box.info(f"🌐 Повтор перевода ({tr_attempt + 1}/{translation_attempts})...")
+                                def on_translation_status(msg):
+                                    status_box.info(f"🌐 {msg}")
+                                try:
+                                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                        future = executor.submit(
+                                            run_async,
+                                            translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                                        )
+                                        translated = future.result(timeout=settings.ui_translation_timeout_seconds)
+                                    if translated:
+                                        optimized = translated
+                                    break
+                                except concurrent.futures.TimeoutError:
+                                    if tr_attempt < translation_attempts - 1:
+                                        status_box.warning(f"⚠️ Перевод завис, пробуем снова...")
+                                        continue
+                                    raise Exception("Перевод не завершился после нескольких попыток — попробуй запустить снова")
+                                except Exception:
+                                    raise
 
                     pdf_path = None
                     if not is_check_only and optimized and optimized.pdf_bytes:
