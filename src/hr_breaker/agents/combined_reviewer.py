@@ -261,6 +261,7 @@ Keywords: {', '.join(job.keywords)}
 See attached image.
 
 Perform BOTH visual quality check AND ATS screening. Return all fields.
+IMPORTANT: Write ALL text fields (visual_issues, visual_feedback, ats_issues) in Russian.
 """
 
     agent = get_combined_reviewer_agent()
