@@ -549,17 +549,8 @@ if "last_result" in st.session_state:
     st.markdown("---")
     st.markdown(f"### Результат: {job.title} — {job.company}")
 
-    # Если режим проверки — показываем кнопку оптимизации сразу
+    # Если режим проверки — показываем только статус
     is_check_result = st.session_state.get("check_only_mode", False)
-    if is_check_result and not is_running:
-        st.info("👆 Это результат **проверки** — советы ниже. Хотите получить оптимизированное резюме в PDF?")
-        if st.button("🚀 Оптимизировать резюме — Бесплатно", key="optimize_after_check", use_container_width=True):
-            st.session_state["check_only_mode"] = False
-            st.session_state.pop("last_result", None)
-            st.session_state["trigger_optimization"] = True
-            st.session_state["optimization_running"] = True
-            st.session_state["optimization_start_time"] = time.time()
-            st.rerun()
 
     total_count = len(validation.results)
     failed_count = sum(1 for r in validation.results if not r.passed)
@@ -672,25 +663,17 @@ if "last_result" in st.session_state:
         st.session_state.pop("check_only_mode", None)
         st.rerun()
 
-    # Советы по улучшению — вынесены вниз
+    # Детали проверки — все фильтры (пройденные и нет)
     failed_results = [r for r in validation.results if not r.passed]
 
     if is_check_result:
         st.markdown("---")
         st.markdown("#### 📋 Детали проверки")
-        # В режиме проверки показываем все фильтры (и пройденные, и непройденные)
         if iterations:
             _, _, last_val = iterations[-1]
             display_filter_results(last_val, show_all=True)
 
-    if failed_results:
-        st.markdown("---")
-        st.markdown("#### 💡 Как улучшить результат")
-        if iterations:
-            _, _, last_val = iterations[-1]
-            display_filter_results(last_val)
-
-        if is_check_result:
+        if failed_results:
             st.markdown("---")
             st.markdown("""
             <div style="background: #f8f9fa; border-radius: 10px; padding: 16px; margin-bottom: 12px;">
@@ -698,7 +681,7 @@ if "last_result" in st.session_state:
                 <div style="font-size: 13px; color: #666; line-height: 1.5;">Выше вы видите советы — можете внести правки сами. Или доверьте это нам: программа учтёт все замечания и поможет создать улучшенную версию резюме.</div>
             </div>
             """, unsafe_allow_html=True)
-            st.caption("⏱ Займёт ещё ~10 минут")
+            st.caption("⏱ Займёт ещё ~25 минут")
             if st.button("🔄 Оптимизировать резюме — Бесплатно", key="btn_improve", use_container_width=True):
                 source = st.session_state["source_resume"]
                 if iterations:
@@ -714,6 +697,4 @@ if "last_result" in st.session_state:
                 st.session_state.pop("last_result", None)
                 st.session_state["check_only_mode"] = False
                 st.session_state["trigger_optimization"] = True
-                st.session_state["optimization_running"] = True
-                st.session_state["optimization_start_time"] = time.time()
                 st.rerun()
