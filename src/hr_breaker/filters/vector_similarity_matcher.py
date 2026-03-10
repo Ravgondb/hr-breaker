@@ -1,5 +1,4 @@
 from litellm import aembedding as litellm_aembedding
-
 from hr_breaker.config import get_settings
 from hr_breaker.filters.base import BaseFilter
 from hr_breaker.filters.registry import FilterRegistry
@@ -9,8 +8,6 @@ from hr_breaker.utils.retry import run_with_retry
 
 @FilterRegistry.register
 class VectorSimilarityMatcher(BaseFilter):
-    """Vector similarity filter using embeddings via litellm."""
-
     name = "VectorSimilarityMatcher"
     priority = 6
 
@@ -18,22 +15,13 @@ class VectorSimilarityMatcher(BaseFilter):
     def threshold(self) -> float:
         return get_settings().filter_vector_threshold
 
-    async def evaluate(
-        self,
-        optimized: OptimizedResume,
-        job: JobPosting,
-        source: ResumeSource,
-    ) -> FilterResult:
+    async def evaluate(self, optimized: OptimizedResume, job: JobPosting, source: ResumeSource) -> FilterResult:
         settings = get_settings()
-
         if optimized.pdf_text is None:
             return FilterResult(
-                filter_name=self.name,
-                passed=False,
-                score=0.0,
-                threshold=self.threshold,
-                issues=["No PDF text available"],
-                suggestions=["Ensure PDF compilation succeeds"],
+                filter_name=self.name, passed=False, score=0.0, threshold=self.threshold,
+                issues=["Текст PDF недоступен"],
+                suggestions=["Убедитесь что PDF компилируется успешно"],
             )
 
         resume_text = optimized.pdf_text
@@ -49,35 +37,23 @@ class VectorSimilarityMatcher(BaseFilter):
             embeddings = [item["embedding"] for item in result.data]
         except Exception as e:
             return FilterResult(
-                filter_name=self.name,
-                passed=True,
-                score=1.0,
-                threshold=self.threshold,
-                issues=[f"Embedding API error: {e}"],
+                filter_name=self.name, passed=True, score=1.0, threshold=self.threshold,
+                issues=[f"Ошибка Embedding API: {e}"],
                 suggestions=[],
             )
 
-        # Cosine similarity
         e1, e2 = embeddings[0], embeddings[1]
         dot = sum(a * b for a, b in zip(e1, e2))
         norm1 = sum(a * a for a in e1) ** 0.5
         norm2 = sum(b * b for b in e2) ** 0.5
         similarity = dot / (norm1 * norm2) if norm1 and norm2 else 0.0
-
-        # Normalize to 0-1 (cosine similarity is -1 to 1)
         score = (similarity + 1) / 2
 
         issues = []
         if score < self.threshold:
-            issues.append(
-                f"Low semantic vector similarity to job posting ({score:.2f})"
-            )
+            issues.append(f"Низкое семантическое соответствие вакансии ({score:.2f})")
 
         return FilterResult(
-            filter_name=self.name,
-            passed=score >= self.threshold,
-            score=score,
-            threshold=self.threshold,
-            issues=issues,
-            suggestions=[],
+            filter_name=self.name, passed=score >= self.threshold, score=score,
+            threshold=self.threshold, issues=issues, suggestions=[],
         )
