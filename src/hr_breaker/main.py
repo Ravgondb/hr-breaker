@@ -509,14 +509,13 @@ if should_run:
                         if is_check_only:
                             status_box.info(f"🔍 Анализ завершён — пройдено {passed} из {total} проверок")
                         else:
-                            if i < run_iterations:
-                                status_box.info(f"✅ Итерация {i} из {run_iterations} готова. Продолжаем...")
+                            if i + 1 < run_iterations:
+                                status_box.info(f"✅ Итерация {i + 1} из {run_iterations} готова. Продолжаем...")
                             else:
                                 status_box.info(f"✅ Все {run_iterations} итерации готовы — пройдено {passed}/{total} проверок. Генерируем PDF...")
 
                     def on_translation_status(msg):
-                        if msg == "translating":
-                            status_box.info("🌐 Переводим резюме...")
+                        pass  # не используется здесь — перевод делается отдельно ниже
 
                     # Сначала оптимизируем на английском без перевода
                     optimized, validation, job = run_async(
@@ -539,7 +538,11 @@ if should_run:
                         if selected_language.code != "en" and optimized and optimized.html:
                             status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
                             def on_translation_status(msg):
-                                status_box.info(f"🌐 {msg}")
+                                # orchestration шлёт английские строки — показываем свои
+                                if "Refining" in msg or "Reviewing" in msg:
+                                    status_box.info("🌐 Проверяем качество перевода...")
+                                else:
+                                    status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
                             translated = run_async(
                                 translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
                             )
