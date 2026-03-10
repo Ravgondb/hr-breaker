@@ -456,7 +456,7 @@ if not is_running and "last_result" not in st.session_state:
             «Единственный способ делать великую работу —<br>любить то, что вы делаете»
         </div>
         <div style="margin-top: 16px; font-family: Georgia, serif; font-size: 14px; color: #aaa; letter-spacing: 1px;">
-            — Стив Джобс
+            Стив Джобс
         </div>
     </div>
     """, unsafe_allow_html=True)
