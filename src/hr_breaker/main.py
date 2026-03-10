@@ -415,7 +415,7 @@ with btn_col1:
     )
 with btn_col2:
     clicked_optimize = st.button(
-        "🚀 Оптимизировать резюме — Бесплатно",
+        "🚀 Оптимизировать резюме",
         key="btn_optimize",
         disabled=not can_optimize,
         use_container_width=True,
@@ -743,7 +743,7 @@ if "last_result" in st.session_state:
             </div>
             """, unsafe_allow_html=True)
             st.caption("⏱ Займёт ещё ~25 минут")
-            if st.button("🔄 Оптимизировать резюме — Бесплатно", key="btn_improve", use_container_width=True):
+            if st.button("🔄 Оптимизировать резюме", key="btn_improve", use_container_width=True):
                 source = st.session_state["source_resume"]
                 if iterations:
                     _, _, last_val = iterations[-1]
@@ -761,3 +761,11 @@ if "last_result" in st.session_state:
                 st.session_state["trigger_optimization"] = True
                 st.session_state["optimization_running"] = True
                 st.rerun()
+
+    elif failed_results:
+        # После оптимизации — показываем только непройденные фильтры с советами
+        st.markdown("---")
+        st.markdown("#### 💡 Что можно улучшить")
+        if iterations:
+            _, _, last_val = iterations[-1]
+            display_filter_results(last_val, show_all=False)
