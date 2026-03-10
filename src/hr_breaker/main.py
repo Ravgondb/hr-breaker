@@ -8,10 +8,15 @@ import streamlit as st
 
 nest_asyncio.apply()
 
-# Event loop setup
-if "event_loop" not in st.session_state:
-    st.session_state.event_loop = asyncio.new_event_loop()
-asyncio.set_event_loop(st.session_state.event_loop)
+def run_async(coro):
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("loop closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
@@ -55,10 +60,6 @@ div[data-testid="stSelectbox"] { margin-top: 0 !important; }
 }
 </style>
 """, unsafe_allow_html=True)
-
-def run_async(coro):
-    loop = st.session_state.event_loop
-    return loop.run_until_complete(coro)
 
 @st.cache_data(show_spinner=False)
 def cached_scrape_job(url: str) -> str:
@@ -217,17 +218,11 @@ selected_language = get_language(selected_lang_code)
 col_resume, col_job = st.columns(2)
 
 is_running = st.session_state.get("optimization_running", False)
-# Если флаг стоит но нет активного триггера — значит предыдущий запуск завершился
-# (нормально или с ошибкой), сбрасываем немедленно
+# Если флаг стоит но нет активного триггера — сбрасываем безусловно
 if is_running and not st.session_state.get("trigger_optimization", False):
-    # Проверяем: если optimization_start_time есть — оптимизация реально шла
-    # но раз мы здесь без триггера, значит она уже закончилась (finally сбросил флаг)
-    # или упала без finally. В любом случае сбрасываем.
-    start_time = st.session_state.get("optimization_start_time")
-    if start_time is None:
-        # Нет start_time — флаг точно застрял
-        st.session_state["optimization_running"] = False
-        is_running = False
+    st.session_state["optimization_running"] = False
+    st.session_state.pop("optimization_start_time", None)
+    is_running = False
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
