@@ -448,6 +448,19 @@ if clicked_optimize:
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
 should_run = st.session_state.pop("trigger_optimization", False)
 
+# Цитата — показываем только когда нет результатов и нет активной оптимизации
+if not is_running and "last_result" not in st.session_state:
+    st.markdown("""
+    <div style="text-align: center; padding: 80px 20px 20px 20px;">
+        <div style="font-family: Georgia, serif; font-size: 22px; font-style: italic; color: #555; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            «Единственный способ делать великую работу —<br>любить то, что вы делаете»
+        </div>
+        <div style="margin-top: 16px; font-family: Georgia, serif; font-size: 14px; color: #aaa; letter-spacing: 1px;">
+            — Стив Джобс
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # Оптимизация идёт прямо сейчас (should_run только что запустил её выше) — стопаем рендер
 if is_running and not should_run:
     st.stop()
