@@ -29,12 +29,17 @@ TRANSLATION QUALITY:
 - Use industry-standard terms accepted in the {language_english}-speaking professional community
 - Ensure phrasing sounds natural and human-written, not literal word-for-word translation
 
+DATES AND MONTHS - MUST TRANSLATE:
+- Translate ALL month names to {language_english} (January -> Январь, February -> Февраль, etc.)
+- Translate date ranges and labels (Present -> Настоящее время, Current -> Настоящее время)
+- Translate section headers (Work Experience, Education, Skills, Summary, etc.)
+
 PRESERVE UNCHANGED:
 - Company names (keep original)
 - Product names and brand names
 - Certifications and their abbreviations (AWS, PMP, etc.)
 - Programming languages, frameworks, and tool names (Python, React, Docker, etc.)
-- Numbers, dates, percentages, and metrics
+- Numbers, percentages, and metrics
 - URLs, email addresses, and all links
 - Personal name (keep as-is)
 
@@ -82,15 +87,9 @@ async def translate_resume(
     job: JobPosting,
     feedback: str | None = None,
 ) -> TranslationResult:
-    """Translate HTML resume body from English to target language.
-
-    Args:
-        html: English HTML body content
-        language: Target language
-        job: Job posting (for field-specific terminology context)
-        feedback: Optional feedback from reviewer to improve translation
-    """
     prompt = f"""Translate this resume HTML from English to {language.english_name}.
+
+IMPORTANT: Translate ALL text including month names, date labels, and section headers.
 
 ## Job Context (for terminology):
 - Title: {job.title}
