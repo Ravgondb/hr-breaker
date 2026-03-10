@@ -15,7 +15,7 @@ class AIGeneratedResult(BaseModel):
     )
     indicators: list[str] = Field(
         default_factory=list,
-        description="Specific indicators of AI generation found",
+        description="Specific indicators of AI generation found, written in Russian",
     )
 
 
@@ -65,7 +65,7 @@ ai_probability:
 
 Set is_ai_generated=true ONLY if ai_probability > 0.5
 
-When listing indicators, quote specific problematic text.
+IMPORTANT: Write ALL indicators in Russian language.
 """
 
 
@@ -86,7 +86,6 @@ def get_ai_generated_agent() -> Agent:
 
 async def detect_ai_generated(optimized: OptimizedResume) -> FilterResult:
     """Detect AI-generated content in optimized resume."""
-    # Use pdf_text (extracted from rendered PDF) for analysis
     if optimized.pdf_text:
         content = optimized.pdf_text
     elif optimized.html:
@@ -102,7 +101,8 @@ async def detect_ai_generated(optimized: OptimizedResume) -> FilterResult:
 {content}
 === END ===
 
-Look for patterns that indicate AI generation while ignoring normal resume conventions."""
+Look for patterns that indicate AI generation while ignoring normal resume conventions.
+Write all indicators in Russian."""
 
     agent = get_ai_generated_agent()
     result = await run_with_retry(agent.run, prompt)
@@ -112,12 +112,10 @@ Look for patterns that indicate AI generation while ignoring normal resume conve
     suggestions = []
 
     if r.indicators:
-        # Each indicator is specific - list them individually for the optimizer
         for indicator in r.indicators:
-            issues.append(f"AI giveaway: {indicator}")
+            issues.append(indicator)
         suggestions.append(
-            "Fix AI tells: vary bullet lengths/structure, add specific details "
-            "instead of generic claims, introduce minor style variations"
+            "Разнообразьте структуру и длину пунктов, добавьте конкретные детали вместо общих фраз"
         )
 
     return FilterResult(
