@@ -671,7 +671,7 @@ if "last_result" in st.session_state:
         </style>
         """, unsafe_allow_html=True)
         st.download_button(
-            label="⬇️ Скачать PDF",
+            label="Скачать PDF",
             data=pdf_bytes,
             file_name=pdf_path.name,
             mime="application/pdf",
