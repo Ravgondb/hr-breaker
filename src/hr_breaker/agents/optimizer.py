@@ -26,7 +26,6 @@ TEMPLATE_DIR = Path(__file__).parent.parent.parent.parent / "templates"
 
 
 def _load_resume_guide() -> str:
-    """Load the HTML generation guide for the optimizer."""
     guide_path = TEMPLATE_DIR / "resume_guide.md"
     return guide_path.read_text()
 
@@ -93,6 +92,7 @@ STRICT RULES - NEVER VIOLATE:
 - Never use the em dash symbol, the word "delve" or other common markers of LLM-generated text.
 - NEVER add <script> tags
 - Do not cut critical content (like work experience, education, etc) if you can cut something else (like summary)
+- NEVER change, adjust, or reinterpret any dates (employment dates, graduation dates, etc.) — copy them EXACTLY as they appear in the original resume. This is an absolute rule.
 """
 
 OPTIMIZER_LENIENT_RULES = """
@@ -112,6 +112,7 @@ STRICT RULES - NEVER VIOLATE:
 - Never use the em dash symbol, the word "delve" or other common markers of LLM-generated text.
 - NEVER add <script> tags
 - Do not cut critical content (like work experience, education, etc) if you can cut something else (like summary)
+- NEVER change, adjust, or reinterpret any dates (employment dates, graduation dates, etc.) — copy them EXACTLY as they appear in the original resume. This is an absolute rule.
 """
 
 
@@ -123,7 +124,6 @@ class OptimizerResult(BaseModel):
 def get_optimizer_agent(
     job: JobPosting, source: ResumeSource, no_shame: bool = False
 ) -> Agent:
-    """Create optimizer agent with job/source context for filter tools."""
     settings = get_settings()
     resume_guide = _load_resume_guide()
     content_rules = OPTIMIZER_LENIENT_RULES if no_shame else OPTIMIZER_STRICT_RULES
@@ -145,8 +145,6 @@ def get_optimizer_agent(
     def check_content_length(html: str) -> dict:
         """Check if HTML content fits one page by rendering PDF. Call before finalizing."""
         est = estimate_content_length(html)
-
-        # Actually render PDF to check real page count
         try:
             renderer = HTMLRenderer()
             render_result = renderer.render(html)
@@ -182,10 +180,7 @@ def get_optimizer_agent(
             )
         logger.debug(
             "check_content_length called: %d pages, %d chars, %d words, fits=%s",
-            page_count,
-            est.chars,
-            est.words,
-            fits_one_page,
+            page_count, est.chars, est.words, fits_one_page,
         )
         return result
 
@@ -205,8 +200,7 @@ def get_optimizer_agent(
         result = check_keywords(resume_text, job)
         logger.debug(
             "check_keywords called: score=%.2f, missing=%d",
-            result.score,
-            len(result.missing_keywords),
+            result.score, len(result.missing_keywords),
         )
         return {
             "passed": result.passed,
@@ -233,7 +227,6 @@ async def optimize_resume(
     no_shame: bool = False,
     user_instructions: str | None = None,
 ) -> OptimizedResume:
-    """Optimize resume for job posting."""
     prompt = f"""## Original Resume:
 {context.original_resume}
 
@@ -243,6 +236,8 @@ Company: {job.company}
 Requirements: {', '.join(job.requirements)}
 Keywords: {', '.join(job.keywords)}
 Description: {job.description}
+
+CRITICAL DATE RULE: Copy ALL dates (employment periods, graduation years, etc.) EXACTLY as written in the Original Resume above. Do NOT change any year or month under any circumstances.
 """
 
     if user_instructions:
@@ -267,6 +262,7 @@ IMPORTANT: Treat the above "User Instructions" as GROUND TRUTH about the candida
 
 NOTE: This is a REFINEMENT iteration. Make the smallest possible change to pass failed filters.
 Do NOT rewrite from scratch - modify the last attempt minimally.
+DATES: Do not change any dates from the Last Attempt.
 """
 
     if context.validation:
