@@ -604,13 +604,7 @@ if "last_result" in st.session_state:
     pdf_path = result["pdf_path"]
 
     st.markdown("---")
-    st.markdown(
-        f"""<div style="background: linear-gradient(135deg, #f0fdf4 0%, #f0f7ff 100%);
-        border: 1.5px solid #d1fae5; border-radius: 12px; padding: 20px 24px 4px 24px; margin-bottom: 16px;">
-        <div style="font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px;">
-        🎯 Результат: {job.title} — {job.company}</div></div>""",
-        unsafe_allow_html=True
-    )
+    st.markdown(f"### 🎯 Результат: {job.title} — {job.company}")
 
     # Если режим проверки — показываем только статус
     is_check_result = st.session_state.get("check_only_mode", False)
