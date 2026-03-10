@@ -16,12 +16,12 @@ class HallucinationResult(BaseModel):
     )
     concerns: list[str] = Field(
         default_factory=list,
-        description="List of potential concerns (may include minor acceptable additions)",
+        description="List of potential concerns in Russian language",
     )
     reasoning: str = Field(description="Brief explanation of the score")
 
 
-STRICT_PROMPT = """You are a resume verification specialist. 
+STRICT_PROMPT = """You are a resume verification specialist.
 Compare an ORIGINAL resume with an OPTIMIZED version and return a no_hallucination_score from 0.0 to 1.0.
 
 SCORING GUIDE:
@@ -52,9 +52,10 @@ SERIOUS FABRICATIONS (score below 0.5):
 - Fake achievements, publications, or awards
 - Completely unrelated technologies
 
+IMPORTANT: Write all concerns in Russian language.
 """
 
-LENIENT_PROMPT = """You are a resume verification specialist. 
+LENIENT_PROMPT = """You are a resume verification specialist.
 Compare an ORIGINAL resume with an OPTIMIZED version and return a no_hallucination_score from 0.0 to 1.0.
 
 SCORING GUIDE:
@@ -83,6 +84,7 @@ BLOCK (score below 0.5):
 - Technologies with zero connection to stated experience
 - Made up specific metrics
 
+IMPORTANT: Write all concerns in Russian language.
 """
 
 
@@ -107,8 +109,6 @@ async def detect_hallucinations(
     source: ResumeSource,
     no_shame: bool = False,
 ) -> FilterResult:
-    """Detect hallucinations in optimized resume vs original."""
-    # Use html or data depending on what's available
     if optimized.html:
         optimized_content = optimized.html
     elif optimized.data:
@@ -135,7 +135,7 @@ async def detect_hallucinations(
 === END ===
 
 Return a no_hallucination_score (0.0-1.0) based on how faithful the optimized version is to the original.
-List any concerns but remember: light assumptions about related technologies are acceptable."""
+List any concerns in Russian language. Remember: light assumptions about related technologies are acceptable."""
 
     threshold = 0.6 if no_shame else 0.9
     agent = get_hallucination_agent(no_shame=no_shame)
@@ -146,10 +146,10 @@ List any concerns but remember: light assumptions about related technologies are
     suggestions = []
 
     if r.concerns:
-        issues.append(f"Concerns: {', '.join(r.concerns)}")
+        issues.append(f"Замечания: {', '.join(r.concerns)}")
     if r.no_hallucination_score < threshold:
         suggestions.append(
-            f"Score {r.no_hallucination_score:.2f} below {threshold} threshold. {r.reasoning}"
+            f"Оценка {r.no_hallucination_score:.2f} ниже порога {threshold}. {r.reasoning}"
         )
 
     return FilterResult(
