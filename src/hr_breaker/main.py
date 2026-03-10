@@ -656,8 +656,22 @@ if "last_result" in st.session_state:
             </script>
         """, height=0)
 
+        st.markdown("""
+        <style>
+        div[data-testid="stDownloadButton"] > button {
+            background-color: #1a1a2e !important;
+            color: white !important;
+            border: none !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stDownloadButton"] > button:hover {
+            background-color: #16213e !important;
+            color: white !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         st.download_button(
-            label="⬇️ Скачать PDF вручную",
+            label="⬇️ Скачать PDF",
             data=pdf_bytes,
             file_name=pdf_path.name,
             mime="application/pdf",
