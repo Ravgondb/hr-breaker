@@ -11,8 +11,6 @@ from hr_breaker.models import FilterResult, JobPosting, OptimizedResume, ResumeS
 
 @dataclass
 class KeywordCheckResult:
-    """Result of keyword matching check."""
-
     score: float
     passed: bool
     missing_keywords: list[str]
@@ -21,16 +19,6 @@ class KeywordCheckResult:
 def check_keywords(
     resume_text: str, job: JobPosting, threshold: float | None = None
 ) -> KeywordCheckResult:
-    """Check keyword coverage of resume text vs job posting.
-
-    Args:
-        resume_text: Plain text from resume (already lowercased)
-        job: Job posting with requirements and keywords
-        threshold: Minimum score to pass (default from settings)
-
-    Returns:
-        KeywordCheckResult with score, passed status, and missing keywords ranked by TF-IDF importance
-    """
     settings = get_settings()
     if threshold is None:
         threshold = settings.filter_keyword_threshold
@@ -89,8 +77,6 @@ def check_keywords(
 
 @FilterRegistry.register
 class KeywordMatcher(BaseFilter):
-    """Keyword matching filter using TF-IDF weighted scoring."""
-
     name = "KeywordMatcher"
     priority = 4
 
@@ -110,8 +96,8 @@ class KeywordMatcher(BaseFilter):
                 passed=False,
                 score=0.0,
                 threshold=self.threshold,
-                issues=["No PDF text available"],
-                suggestions=["Ensure PDF compilation succeeds"],
+                issues=["Текст PDF недоступен"],
+                suggestions=["Убедитесь что PDF компилируется успешно"],
             )
 
         result = check_keywords(optimized.pdf_text, job, self.threshold)
@@ -120,10 +106,10 @@ class KeywordMatcher(BaseFilter):
         suggestions = []
         if result.missing_keywords and not result.passed:
             issues.append(
-                f"Missing important keywords: {', '.join(result.missing_keywords)}"
+                f"Отсутствующие ключевые слова: {', '.join(result.missing_keywords)}"
             )
             suggestions.append(
-                "Add missing keywords if they match your actual experience"
+                "Добавьте недостающие ключевые слова если они соответствуют вашему опыту"
             )
 
         return FilterResult(
