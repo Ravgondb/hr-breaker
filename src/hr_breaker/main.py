@@ -447,6 +447,7 @@ if clicked_optimize:
         # Второй клик (настройки уже видны) — запускаем оптимизацию
         st.session_state.pop("last_result", None)
         gc.collect()
+        st.session_state["show_optimize_options"] = False
         st.session_state["check_only_mode"] = False
         st.session_state["trigger_optimization"] = True
         st.session_state["optimization_running"] = True
