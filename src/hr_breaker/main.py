@@ -467,7 +467,7 @@ if should_run:
         st.rerun()
 
     source = st.session_state["source_resume"]
-    instructions_value = user_instructions.strip() if user_instructions else None
+    instructions_value = st.session_state.get("user_instructions", "").strip() or None
     if instructions_value != source.instructions:
         source = source.model_copy(update={"instructions": instructions_value})
         cache.put(source)
