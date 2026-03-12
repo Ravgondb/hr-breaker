@@ -1,10 +1,21 @@
 import asyncio
 import base64
+import gc
 import html as _html
 import time
 import traceback
 import nest_asyncio
 import streamlit as st
+
+# Отключаем фоновый логгер litellm — он создаёт висящие async-задачи между итерациями
+try:
+    import litellm
+    litellm.suppress_debug_info = True
+    litellm.callbacks = []
+    litellm._async_success_callback = []
+    litellm._async_failure_callback = []
+except Exception:
+    pass
 
 nest_asyncio.apply()
 
@@ -435,6 +446,7 @@ if clicked_optimize:
     else:
         # Второй клик (настройки уже видны) — запускаем оптимизацию
         st.session_state.pop("last_result", None)
+        gc.collect()
         st.session_state["check_only_mode"] = False
         st.session_state["trigger_optimization"] = True
         st.session_state["optimization_running"] = True
@@ -501,6 +513,7 @@ if should_run:
                         iteration_results.append((i, opt, val))
                         passed = sum(1 for r in val.results if r.passed)
                         total = len(val.results)
+                        gc.collect()  # освобождаем память между итерациями
                         if is_check_only:
                             status_box.info(f"🔍 Анализ завершён — пройдено {passed} из {total} проверок")
                         else:
