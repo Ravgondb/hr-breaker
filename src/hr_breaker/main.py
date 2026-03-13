@@ -9,15 +9,15 @@ import streamlit as st
 
 nest_asyncio.apply()
 
-_event_loop = asyncio.new_event_loop()
-asyncio.set_event_loop(_event_loop)
-
 def run_async(coro):
-    # Отменяем висящие задачи от предыдущих запусков (litellm LoggingWorker)
-    pending = asyncio.all_tasks(_event_loop)
-    for task in pending:
-        task.cancel()
-    return _event_loop.run_until_complete(coro)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("loop closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
@@ -786,6 +786,7 @@ if "last_result" in st.session_state:
                         source = source.model_copy(update={"instructions": combined})
                         st.session_state["source_resume"] = source
                 st.session_state.pop("last_result", None)
+                gc.collect()
                 st.session_state["check_only_mode"] = False
                 st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
