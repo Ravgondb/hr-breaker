@@ -9,14 +9,11 @@ import streamlit as st
 
 nest_asyncio.apply()
 
+_event_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_event_loop)
+
 def run_async(coro):
-    """Run async coroutine, creating new event loop if needed."""
-    loop = st.session_state.get("event_loop")
-    if loop is None or loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        st.session_state["event_loop"] = loop
-    return loop.run_until_complete(coro)
+    return _event_loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
@@ -443,18 +440,6 @@ if clicked_optimize:
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
 should_run = st.session_state.pop("trigger_optimization", False)
 
-# Цитата — показываем только когда нет результатов и нет активной оптимизации
-if not is_running and not should_run and "last_result" not in st.session_state:
-    st.markdown("""
-    <div style="text-align: center; padding: 80px 20px 20px 20px;">
-        <div style="font-family: Georgia, serif; font-size: 22px; font-style: italic; color: #555; line-height: 1.6; max-width: 600px; margin: 0 auto;">
-            «Единственный способ делать великую работу —<br>любить то, что вы делаете»
-        </div>
-        <div style="margin-top: 16px; font-family: Georgia, serif; font-size: 14px; color: #aaa; letter-spacing: 1px;">
-            Стив Джобс
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
 # Оптимизация идёт прямо сейчас (should_run только что запустил её выше) — стопаем рендер
 if is_running and not should_run:
@@ -606,6 +591,19 @@ if should_run:
     else:
         st.session_state["idle_for_ui_retries"] = 0
         st.rerun()
+
+# Цитата — только когда нет результата и нет активного запуска
+if not should_run and not is_running and "last_result" not in st.session_state:
+    st.markdown("""
+    <div style="text-align: center; padding: 80px 20px 20px 20px;">
+        <div style="font-family: Georgia, serif; font-size: 22px; font-style: italic; color: #555; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            «Единственный способ делать великую работу —<br>любить то, что вы делаете»
+        </div>
+        <div style="margin-top: 16px; font-family: Georgia, serif; font-size: 14px; color: #aaa; letter-spacing: 1px;">
+            Стив Джобс
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Display last result if exists
 if "last_result" in st.session_state:
