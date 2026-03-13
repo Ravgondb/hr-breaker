@@ -1,3 +1,7 @@
+# Подавляем логирование litellm — LoggingWorker накапливается и течёт память
+import os
+os.environ["LITELLM_LOG"] = "ERROR"
+
 import asyncio
 import base64
 import gc
@@ -7,11 +11,11 @@ import traceback
 import nest_asyncio
 import streamlit as st
 
-# Отключаем фоновый логгер litellm — он создаёт висящие async-задачи между итерациями
 try:
     import litellm
-    litellm.suppress_debug_info = True
-    litellm.callbacks = []
+    litellm.set_verbose = False
+    litellm.success_callback = []
+    litellm.failure_callback = []
     litellm._async_success_callback = []
     litellm._async_failure_callback = []
 except Exception:
@@ -229,11 +233,19 @@ selected_language = get_language(selected_lang_code)
 col_resume, col_job = st.columns(2)
 
 is_running = st.session_state.get("optimization_running", False)
-# Если флаг стоит но нет активного триггера — сбрасываем безусловно
-if is_running and not st.session_state.get("trigger_optimization", False):
-    st.session_state["optimization_running"] = False
-    st.session_state.pop("optimization_start_time", None)
-    is_running = False
+# Сбрасываем застрявший флаг
+has_pending_trigger = st.session_state.get("trigger_optimization", False)
+if is_running and not has_pending_trigger:
+    start_time = st.session_state.get("optimization_start_time")
+    if start_time is None:
+        # Флаг застрял без реального запуска
+        st.session_state["optimization_running"] = False
+        is_running = False
+    elif time.time() - start_time > 3600:
+        # Запуск был, но завис больше часа — сбрасываем
+        st.session_state["optimization_running"] = False
+        st.session_state.pop("optimization_start_time", None)
+        is_running = False
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
