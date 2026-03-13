@@ -424,7 +424,6 @@ if clicked_check:
     st.session_state.pop("last_result", None)
     st.session_state["check_only_mode"] = True
     st.session_state["trigger_optimization"] = True
-    st.session_state["optimization_running"] = True
     st.rerun()
 
 if clicked_optimize:
@@ -439,7 +438,6 @@ if clicked_optimize:
         st.session_state["show_optimize_options"] = False
         st.session_state["check_only_mode"] = False
         st.session_state["trigger_optimization"] = True
-        st.session_state["optimization_running"] = True
         st.rerun()
 
 # Триггер запуска — по сохранённому флагу (клик или программный rerun-триггер)
@@ -500,7 +498,9 @@ if should_run:
                     iteration_results = []
 
                     def on_iteration(i, opt, val):
-                        iteration_results.append((i, opt, val))
+                        # Сохраняем без pdf_bytes — они занимают много памяти
+                        opt_light = opt.model_copy(update={"pdf_bytes": None})
+                        iteration_results.append((i, opt_light, val))
                         passed = sum(1 for r in val.results if r.passed)
                         total = len(val.results)
                         if is_check_only:
@@ -787,7 +787,6 @@ if "last_result" in st.session_state:
                 st.session_state["check_only_mode"] = False
                 st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
-                st.session_state["optimization_running"] = True
                 st.rerun()
 
     elif failed_results:
