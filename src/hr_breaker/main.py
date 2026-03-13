@@ -9,13 +9,13 @@ import streamlit as st
 
 nest_asyncio.apply()
 
-# Event loop setup
-if "event_loop" not in st.session_state:
-    st.session_state.event_loop = asyncio.new_event_loop()
-asyncio.set_event_loop(st.session_state.event_loop)
-
 def run_async(coro):
-    loop = st.session_state.event_loop
+    """Run async coroutine, creating new event loop if needed."""
+    loop = st.session_state.get("event_loop")
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        st.session_state["event_loop"] = loop
     return loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
@@ -220,17 +220,9 @@ col_resume, col_job = st.columns(2)
 is_running = st.session_state.get("optimization_running", False)
 has_pending_trigger = st.session_state.get("trigger_optimization", False)
 if is_running and not has_pending_trigger:
-    start_time = st.session_state.get("optimization_start_time")
-    if start_time is None:
-        # Флаг застрял без реального запуска — сбрасываем
-        st.session_state["optimization_running"] = False
-        is_running = False
-    elif time.time() - start_time > 1800:
-        # Завис дольше 45 минут — точно мёртвый, сбрасываем
-        st.session_state["optimization_running"] = False
-        st.session_state.pop("optimization_start_time", None)
-        is_running = False
-    # Иначе — оптимизация реально идёт, не трогаем
+    st.session_state["optimization_running"] = False
+    st.session_state.pop("optimization_start_time", None)
+    is_running = False
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
