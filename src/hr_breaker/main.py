@@ -1,7 +1,3 @@
-# Подавляем логирование litellm — LoggingWorker накапливается и течёт память
-import os
-os.environ["LITELLM_LOG"] = "ERROR"
-
 import asyncio
 import base64
 import gc
@@ -11,26 +7,15 @@ import traceback
 import nest_asyncio
 import streamlit as st
 
-try:
-    import litellm
-    litellm.set_verbose = False
-    litellm.success_callback = []
-    litellm.failure_callback = []
-    litellm._async_success_callback = []
-    litellm._async_failure_callback = []
-except Exception:
-    pass
-
 nest_asyncio.apply()
 
+# Event loop setup
+if "event_loop" not in st.session_state:
+    st.session_state.event_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(st.session_state.event_loop)
+
 def run_async(coro):
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("loop closed")
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    loop = st.session_state.event_loop
     return loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
@@ -233,19 +218,19 @@ selected_language = get_language(selected_lang_code)
 col_resume, col_job = st.columns(2)
 
 is_running = st.session_state.get("optimization_running", False)
-# Сбрасываем застрявший флаг
 has_pending_trigger = st.session_state.get("trigger_optimization", False)
 if is_running and not has_pending_trigger:
     start_time = st.session_state.get("optimization_start_time")
     if start_time is None:
-        # Флаг застрял без реального запуска
+        # Флаг застрял без реального запуска — сбрасываем
         st.session_state["optimization_running"] = False
         is_running = False
-    elif time.time() - start_time > 3600:
-        # Запуск был, но завис больше часа — сбрасываем
+    elif time.time() - start_time > 1800:
+        # Завис дольше 45 минут — точно мёртвый, сбрасываем
         st.session_state["optimization_running"] = False
         st.session_state.pop("optimization_start_time", None)
         is_running = False
+    # Иначе — оптимизация реально идёт, не трогаем
 has_resume = "source_resume" in st.session_state
 
 with col_resume:
@@ -526,7 +511,6 @@ if should_run:
                         iteration_results.append((i, opt, val))
                         passed = sum(1 for r in val.results if r.passed)
                         total = len(val.results)
-                        gc.collect()  # освобождаем память между итерациями
                         if is_check_only:
                             status_box.info(f"🔍 Анализ завершён — пройдено {passed} из {total} проверок")
                         else:
