@@ -13,6 +13,10 @@ _event_loop = asyncio.new_event_loop()
 asyncio.set_event_loop(_event_loop)
 
 def run_async(coro):
+    # Отменяем висящие задачи от предыдущих запусков (litellm LoggingWorker)
+    pending = asyncio.all_tasks(_event_loop)
+    for task in pending:
+        task.cancel()
     return _event_loop.run_until_complete(coro)
 
 from hr_breaker.agents import extract_name, parse_job_posting
