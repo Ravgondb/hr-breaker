@@ -444,7 +444,7 @@ if clicked_optimize:
 should_run = st.session_state.pop("trigger_optimization", False)
 
 # Цитата — показываем только когда нет результатов и нет активной оптимизации
-if not is_running and "last_result" not in st.session_state:
+if not is_running and not should_run and "last_result" not in st.session_state:
     st.markdown("""
     <div style="text-align: center; padding: 80px 20px 20px 20px;">
         <div style="font-family: Georgia, serif; font-size: 22px; font-style: italic; color: #555; line-height: 1.6; max-width: 600px; margin: 0 auto;">
