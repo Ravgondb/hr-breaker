@@ -19,6 +19,16 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
+def run_async_fresh(coro):
+    """Создаёт свежий loop — для операций после длинных async-цепочек (перевод)."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    nest_asyncio.apply(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
 from hr_breaker.models import GeneratedPDF, ResumeSource, ValidationResult, SUPPORTED_LANGUAGES, get_language
@@ -524,16 +534,19 @@ if should_run:
                         if selected_language.code != "en" and optimized and optimized.html:
                             status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
                             def on_translation_status(msg):
-                                # orchestration шлёт английские строки — показываем свои
                                 if "Refining" in msg or "Reviewing" in msg:
                                     status_box.info("🌐 Проверяем качество перевода...")
                                 else:
                                     status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
-                            translated = run_async(
-                                translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-                            )
-                            if translated:
-                                optimized = translated
+                            try:
+                                translated = run_async_fresh(
+                                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
+                                )
+                                if translated:
+                                    optimized = translated
+                            except Exception as tr_err:
+                                # Перевод упал — используем английский вариант, не теряем результат
+                                status_box.warning("⚠️ Перевод не удался — сохраняем английскую версию.")
 
                     pdf_path = None
                     if not is_check_only and optimized and optimized.pdf_bytes:
