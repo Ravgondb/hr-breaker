@@ -19,15 +19,6 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-def run_async_fresh(coro):
-    """Создаёт свежий loop — для операций после длинных async-цепочек (перевод)."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    nest_asyncio.apply(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 from hr_breaker.agents import extract_name, parse_job_posting
 from hr_breaker.config import get_settings
@@ -539,7 +530,7 @@ if should_run:
                                 else:
                                     status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
                             try:
-                                translated = run_async_fresh(
+                                translated = run_async(
                                     translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
                                 )
                                 if translated:
@@ -800,6 +791,13 @@ if "last_result" in st.session_state:
                         st.session_state["source_resume"] = source
                 st.session_state.pop("last_result", None)
                 gc.collect()
+                # Сбрасываем event loop — после проверки в нём накопились задачи litellm
+                try:
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    nest_asyncio.apply(new_loop)
+                except Exception:
+                    pass
                 st.session_state["check_only_mode"] = False
                 st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
