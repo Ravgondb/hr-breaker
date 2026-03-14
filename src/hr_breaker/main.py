@@ -194,7 +194,7 @@ _default_lang_idx = (
     if settings.default_language in _lang_options
     else 0
 )
-max_iterations = 3
+max_iterations = settings.max_iterations
 
 # Main content
 st.markdown("""
@@ -465,6 +465,13 @@ if should_run:
     st.session_state["optimization_running"] = True
     st.session_state["optimization_start_time"] = time.time()
     error_occurred = None
+    # Принудительно возвращаем память OS (Linux only) перед тяжёлым запуском
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
     try:
         with st.spinner("Анализируем вакансию..."):
@@ -502,9 +509,13 @@ if should_run:
                                 status_box.info(f"✅ Все {run_iterations} итерации готовы — пройдено {passed}/{total} проверок. Генерируем PDF...")
 
                     def on_translation_status(msg):
-                        pass  # не используется здесь — перевод делается отдельно ниже
+                        if "Refining" in msg or "Reviewing" in msg:
+                            status_box.info("🌐 Проверяем качество перевода...")
+                        else:
+                            status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
 
-                    # Сначала оптимизируем на английском без перевода
+                    # Оптимизация + перевод в одном вызове
+                    target_language = None if is_check_only else selected_language
                     optimized, validation, job = run_async(
                         optimize_for_job(
                             source,
@@ -515,29 +526,10 @@ if should_run:
                             parallel=not sequential_mode,
                             no_shame=no_shame_mode,
                             user_instructions=instructions_value,
-                            language=None,
+                            language=target_language,
                             on_translation_status=on_translation_status,
                         )
                     )
-
-                    # Переводим и делаем PDF только если не режим проверки
-                    if not is_check_only:
-                        if selected_language.code != "en" and optimized and optimized.html:
-                            status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
-                            def on_translation_status(msg):
-                                if "Refining" in msg or "Reviewing" in msg:
-                                    status_box.info("🌐 Проверяем качество перевода...")
-                                else:
-                                    status_box.info("🌐 Переводим резюме... не закрывайте браузер!")
-                            try:
-                                translated = run_async(
-                                    translate_and_rerender(optimized, selected_language, job, on_status=on_translation_status)
-                                )
-                                if translated:
-                                    optimized = translated
-                            except Exception as tr_err:
-                                # Перевод упал — используем английский вариант, не теряем результат
-                                status_box.warning("⚠️ Перевод не удался — сохраняем английскую версию.")
 
                     pdf_path = None
                     if not is_check_only and optimized and optimized.pdf_bytes:
@@ -791,13 +783,6 @@ if "last_result" in st.session_state:
                         st.session_state["source_resume"] = source
                 st.session_state.pop("last_result", None)
                 gc.collect()
-                # Сбрасываем event loop — после проверки в нём накопились задачи litellm
-                try:
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    nest_asyncio.apply(new_loop)
-                except Exception:
-                    pass
                 st.session_state["check_only_mode"] = False
                 st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
