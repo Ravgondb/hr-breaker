@@ -194,7 +194,7 @@ _default_lang_idx = (
     if settings.default_language in _lang_options
     else 0
 )
-max_iterations = settings.max_iterations
+max_iterations = 3
 
 # Main content
 st.markdown("""
@@ -480,7 +480,13 @@ if should_run:
         idle_for_retries = 10
         last_idle_for_error = None
         is_check_only = st.session_state.get("check_only_mode", False)
-        run_iterations = 1 if is_check_only else max_iterations
+        came_from_check = st.session_state.pop("came_from_check", False)
+        if is_check_only:
+            run_iterations = 1
+        elif came_from_check:
+            run_iterations = 2
+        else:
+            run_iterations = max_iterations
 
         # Плейсхолдер для live-статуса — обновляется из on_iteration
         status_box = st.empty()
@@ -783,6 +789,7 @@ if "last_result" in st.session_state:
                         st.session_state["source_resume"] = source
                 st.session_state.pop("last_result", None)
                 gc.collect()
+                st.session_state["came_from_check"] = True
                 st.session_state["check_only_mode"] = False
                 st.session_state["show_optimize_options"] = False
                 st.session_state["trigger_optimization"] = True
