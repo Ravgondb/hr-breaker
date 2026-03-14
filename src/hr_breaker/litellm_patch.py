@@ -121,3 +121,15 @@ async def _patched_map_messages(
 def apply():
     """Apply the vision patch to LiteLLMModel."""
     LiteLLMModel._map_messages = _patched_map_messages
+
+    # Отключаем LoggingWorker — он создаёт висящие async-задачи
+    # и накапливается в event loop при каждом вызове LLM,
+    # вызывая OOM-краши при длинных сессиях (проверка + оптимизация)
+    try:
+        import litellm as _litellm
+        _litellm.callbacks = []
+        _litellm._async_success_callback = []
+        _litellm._async_failure_callback = []
+        _litellm._async_input_callback = []
+    except Exception:
+        pass
