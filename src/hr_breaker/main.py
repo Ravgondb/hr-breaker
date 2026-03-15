@@ -522,6 +522,8 @@ if should_run:
 
                     # Оптимизация + перевод в одном вызове
                     target_language = None if is_check_only else selected_language
+                    # Если пришли из проверки — передаём HTML как отправную точку
+                    initial_html = st.session_state.pop("check_result_html", None) if not is_check_only else None
                     optimized, validation, job = run_async(
                         optimize_for_job(
                             source,
@@ -534,6 +536,7 @@ if should_run:
                             user_instructions=instructions_value,
                             language=target_language,
                             on_translation_status=on_translation_status,
+                            initial_html=initial_html,
                         )
                     )
 
@@ -576,6 +579,9 @@ if should_run:
             "iterations": iteration_results,
             "pdf_path": pdf_path,
         }
+        # Сохраняем HTML от проверки — чтобы оптимизация начала с него
+        if is_check_only and optimized and optimized.html:
+            st.session_state["check_result_html"] = optimized.html
     except TimeoutError:
         error_occurred = TimeoutError("Превышено время ожидания ответа от ИИ. Попробуй ещё раз.")
     except Exception as e:
