@@ -114,7 +114,6 @@ async def optimize_for_job(
     user_instructions: str | None = None,
     language: Language | None = None,
     on_translation_status: Callable[[str], None] | None = None,
-    initial_html: str | None = None,
 ) -> tuple[OptimizedResume, ValidationResult, JobPosting]:
     """
     Core optimization loop.
@@ -152,8 +151,7 @@ async def optimize_for_job(
 
     optimized = None
     validation = None
-    # Если передан HTML от предыдущей проверки — используем как отправную точку
-    last_attempt: str | None = initial_html
+    last_attempt: str | None = None
 
     if no_shame:
         logger.info("No-shame mode enabled")
