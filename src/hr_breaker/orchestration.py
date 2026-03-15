@@ -56,14 +56,12 @@ async def run_filters(
     filters = FilterRegistry.all()
 
     if parallel:
-        # Run all filters concurrently
         start = time.perf_counter()
         filter_instances = [filter_cls(no_shame=no_shame) for filter_cls in filters]
         tasks = [f.evaluate(optimized, job, source) for f in filter_instances]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
         logger.debug(f"All filters (parallel): {time.perf_counter() - start:.2f}s")
 
-        # Convert exceptions to failed FilterResults
         results = []
         for f, result in zip(filter_instances, raw_results):
             if isinstance(result, Exception):
@@ -82,12 +80,10 @@ async def run_filters(
                 results.append(result)
         return ValidationResult(results=results)
 
-    # Sequential mode: sorted by priority, early exit on failure
     results = []
     filters = sorted(filters, key=lambda f: f.priority)
 
     for filter_cls in filters:
-        # Skip high-priority (last) filters if earlier ones failed
         if (
             filter_cls.priority >= 100
             and results
@@ -101,7 +97,6 @@ async def run_filters(
         logger.debug(f"{filter_cls.name}: {time.perf_counter() - start:.2f}s")
         results.append(result)
 
-        # Early exit on failure (unless it's a final check)
         if not result.passed and filter_cls.priority < 100:
             break
 
@@ -119,6 +114,7 @@ async def optimize_for_job(
     user_instructions: str | None = None,
     language: Language | None = None,
     on_translation_status: Callable[[str], None] | None = None,
+    initial_html: str | None = None,
 ) -> tuple[OptimizedResume, ValidationResult, JobPosting]:
     """
     Core optimization loop.
@@ -134,6 +130,7 @@ async def optimize_for_job(
         user_instructions: Optional user instructions for the optimizer
         language: Target language for resume output (None = English, no translation)
         on_translation_status: Optional callback(status_message) for translation progress
+        initial_html: Optional HTML from a previous check iteration to use as starting point
 
     Returns:
         (optimized_resume, validation_result, job_posting)
@@ -152,9 +149,11 @@ async def optimize_for_job(
             raise ValueError("Either job_text or job must be provided")
         with log_time("parse_job_posting"):
             job = await parse_job_posting(job_text)
+
     optimized = None
     validation = None
-    last_attempt: str | None = None
+    # Если передан HTML от предыдущей проверки — используем как отправную точку
+    last_attempt: str | None = initial_html
 
     if no_shame:
         logger.info("No-shame mode enabled")
@@ -170,18 +169,15 @@ async def optimize_for_job(
         with log_time("optimize_resume"):
             optimized = await optimize_resume(source, job, ctx, no_shame=no_shame, user_instructions=user_instructions)
         logger.info(f"Optimizer changes: {optimized.changes}")
-        # Store last attempt for feedback (html or data depending on mode)
         last_attempt = (
             optimized.html
             if optimized.html
             else (optimized.data.model_dump_json() if optimized.data else None)
         )
 
-        # Render PDF and extract text for filters (like real ATS)
         optimized = _render_and_extract(optimized, renderer)
 
         if optimized.pdf_text is None:
-            # PDF rendering failed - treat as validation failure
             validation = ValidationResult(
                 results=[
                     FilterResult(
@@ -205,7 +201,6 @@ async def optimize_for_job(
         if validation.passed:
             break
 
-    # Post-processing: translate if target language is not English
     if language is not None and language.code != "en" and optimized is not None and optimized.html:
         optimized = await translate_and_rerender(
             optimized, language, job, renderer, settings.translation_max_iterations,
@@ -223,11 +218,6 @@ async def translate_and_rerender(
     max_translation_iterations: int | None = None,
     on_status: Callable[[str], None] | None = None,
 ) -> OptimizedResume:
-    """Translate the optimized resume HTML and re-render the PDF.
-
-    Public API for translating an already-optimized resume.
-    Runs a mini translate-review loop (max_translation_iterations) to ensure quality.
-    """
     if renderer is None:
         renderer = HTMLRenderer()
     if max_translation_iterations is None:
@@ -262,7 +252,6 @@ async def translate_and_rerender(
             logger.debug("Translation approved (score=%.2f)", review.score)
             break
 
-        # Build feedback for next iteration
         feedback_parts = []
         if review.issues:
             feedback_parts.append("Issues: " + "; ".join(review.issues))
@@ -276,7 +265,6 @@ async def translate_and_rerender(
             max_translation_iterations, review.score,
         )
 
-    # Update optimized with translated HTML and re-render PDF
     translated_optimized = optimized.model_copy(update={"html": translation.html})
     translated_optimized = _render_and_extract(translated_optimized, renderer)
 
@@ -290,7 +278,6 @@ def _render_and_extract(optimized: OptimizedResume, renderer) -> OptimizedResume
     """Render PDF and extract text, updating the OptimizedResume."""
     try:
         with log_time("render_pdf"):
-            # Use html if available, otherwise fall back to data (legacy)
             if optimized.html is not None:
                 result = renderer.render(optimized.html)
             elif optimized.data is not None:
@@ -298,7 +285,6 @@ def _render_and_extract(optimized: OptimizedResume, renderer) -> OptimizedResume
             else:
                 raise RenderError("No content to render (neither html nor data)")
 
-        # Extract text from rendered PDF
         with log_time("extract_text_from_pdf"):
             pdf_text = extract_text_from_pdf_bytes(result.pdf_bytes)
 
